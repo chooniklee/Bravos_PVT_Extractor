@@ -307,14 +307,15 @@
             const text = getEl('pasteArea').value.trim();
             if (!text) return;
 
-            const rows = text.split(/\r?\n/);
+            // Updated split to handle MacOS legacy CR, Windows CRLF, and Unix LF
+            const rows = text.split(/\r\n|\n|\r/);
             const newEntries = [];
 
             rows.forEach((row) => {
                 const cols = row.split('\t').map(c => c.trim());
                 if (cols.length < 7) return;
 
-                // Handle Date (MM/DD/YYYY, YYYY-MM-DD, YYYY.MM.DD)
+                // Handle Date (MM/DD/YYYY, YYYY-MM-DD, YYYY.MM.DD, and now M/D/YY or M/D/YYYY)
                 let rawDate = cols[0];
                 let formattedDate = '';
                 
@@ -322,8 +323,9 @@
                     formattedDate = rawDate;
                 } else if (/^\d{4}\.\d{2}\.\d{2}$/.test(rawDate)) {
                     formattedDate = rawDate.replace(/\./g, '-');
-                } else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(rawDate)) {
-                    const [m, d, y] = rawDate.split('/');
+                } else if (/^\d{1,2}\/\d{1,2}\/(\d{2}|\d{4})$/.test(rawDate)) {
+                    let [m, d, y] = rawDate.split('/');
+                    if (y.length === 2) y = '20' + y; // Assume 21st century for 2-digit years
                     formattedDate = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
                 } else {
                     return; // Header or invalid date row
