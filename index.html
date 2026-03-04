@@ -1,6 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <!-- 
+    ========================================================
+    UPDATE LOG
+    ========================================================
+    - 2026-03-04: Added update log and UI versioning text.
+    - 2026-03-04: Added time extraction from filename for exact same-day chronological sorting.
+    - 2026-03-04: Enhanced Excel paste handling for macOS clipboard formatting and 2-digit years.
+    - Initial Build: Core PDF data extraction, chart visualization, and Excel data import/export.
+    ========================================================
+    -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bravos PVT Fast Extractor</title>
@@ -36,6 +46,7 @@
                     Bravos PVT Fast Extractor
                 </h1>
                 <p class="text-slate-500 mt-1 text-sm">Instant extraction, plotting, and Excel integration.</p>
+                <p class="text-slate-400 mt-1 text-[11px] italic">Last updated by Choonik Lee (March 4, 2026)</p>
             </div>
             <div id="actionButtons" class="hidden flex flex-wrap items-center gap-3">
                 <button onclick="copyToClipboard(true, event)" class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all shadow-md font-medium text-sm">
@@ -167,7 +178,7 @@
                                         <th class="px-2 py-2 text-center bg-slate-50">Status</th>
                                     </tr>
                                     <tr class="bg-slate-50 border-b border-slate-200 text-[9px]">
-                                        <th class="px-3 py-1.5 border-r border-slate-200">YYYY-MM-DD</th>
+                                        <th class="px-3 py-1.5 border-r border-slate-200">Date / Time</th>
                                         <th class="px-2 py-1.5 text-center border-r border-slate-100">90</th>
                                         <th class="px-2 py-1.5 text-center border-r border-slate-100">120</th>
                                         <th class="px-2 py-1.5 text-center border-r border-slate-200">150</th>
@@ -285,8 +296,18 @@
             const content = await page.getTextContent();
             const fullText = content.items.map(item => item.str).join(' ');
 
-            const dateMatch = fullText.match(/(\d{4}-\d{2}-\d{2})/);
-            const date = dateMatch ? dateMatch[1] : 'Unknown';
+            const textDateMatch = fullText.match(/(\d{4}-\d{2}-\d{2})/);
+            let dateStr = textDateMatch ? textDateMatch[1] : 'Unknown';
+            let sortTime = dateStr !== 'Unknown' ? new Date(dateStr).getTime() : 0;
+
+            // Extract exact date and time from filename if available (e.g. PVT-2026-03-04-12-20-52.PDF)
+            const fnMatch = file.name.match(/(\d{4}-\d{2}-\d{2})-(\d{2})-(\d{2})-(\d{2})/);
+            if (fnMatch) {
+                dateStr = `${fnMatch[1]} ${fnMatch[2]}:${fnMatch[3]}:${fnMatch[4]}`;
+                // Use standard ISO 8601 format for robust parsing
+                sortTime = new Date(`${fnMatch[1]}T${fnMatch[2]}:${fnMatch[3]}:${fnMatch[4]}`).getTime();
+            }
+
             const hasCalibration = fullText.includes('Post-Calibration');
             const numPattern = /[+-]\d\.\d{2}/g;
             const allNumbers = fullText.match(numPattern) || [];
@@ -299,7 +320,14 @@
                 d = allNumbers.slice(0, 3).map(v => parseFloat(v));
                 s = allNumbers.slice(3, 6).map(v => parseFloat(v));
             }
-            return { id: Math.random().toString(36).substr(2, 9), date, dummy_90: d[0], dummy_120: d[1], dummy_150: d[2], source_90: s[0], source_120: s[1], source_150: s[2], calibration_performed: hasCalibration };
+            return { 
+                id: Math.random().toString(36).substr(2, 9), 
+                date: dateStr, 
+                sortTime: sortTime,
+                dummy_90: d[0], dummy_120: d[1], dummy_150: d[2], 
+                source_90: s[0], source_120: s[1], source_150: s[2], 
+                calibration_performed: hasCalibration 
+            };
         }
 
         // Auto-detect when text is pasted into the box
@@ -337,9 +365,12 @@
                     return isNaN(n) ? null : n; 
                 };
 
+                const timeForSort = new Date(formattedDate).getTime();
+
                 newEntries.push({
                     id: Math.random().toString(36).substr(2, 9),
                     date: formattedDate,
+                    sortTime: isNaN(timeForSort) ? 0 : timeForSort,
                     dummy_90: parseVal(cols[1]), dummy_120: parseVal(cols[2]), dummy_150: parseVal(cols[3]),
                     source_90: parseVal(cols[4]), source_120: parseVal(cols[5]), source_150: parseVal(cols[6]),
                     calibration_performed: cols[7] ? (cols[7].toLowerCase().includes('yes') || cols[7].toLowerCase().includes('true')) : false
@@ -361,21 +392,22 @@
             if (allResults.length === 0) return;
             
             const validDates = allResults
-                .map(r => r.date)
-                .filter(d => d !== 'Unknown')
-                .map(d => new Date(d).getTime())
-                .filter(t => !isNaN(t));
+                .map(r => r.sortTime)
+                .filter(t => t > 0 && !isNaN(t));
                 
             if (validDates.length === 0) return;
 
             const minTime = Math.min(...validDates);
             const maxTime = Math.max(...validDates);
             
-            // Format to YYYY-MM-DD
-            // Using ISOString ensures YYYY-MM-DD format, but assumes UTC
-            // Since our parsing standardizes on YYYY-MM-DD string, new Date() treats it as UTC, so this is consistent
-            getEl('startDate').value = new Date(minTime).toISOString().split('T')[0];
-            getEl('endDate').value = new Date(maxTime).toISOString().split('T')[0];
+            const minD = new Date(minTime);
+            const maxD = new Date(maxTime);
+            
+            // Format to local YYYY-MM-DD to avoid Timezone offset jumps
+            const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
+            getEl('startDate').value = fmt(minD);
+            getEl('endDate').value = fmt(maxD);
         }
 
         function handleFilterChange() {
@@ -391,9 +423,7 @@
             getEl('totalRecordsCount').innerText = allResults.length;
             
             allResults.sort((a, b) => {
-                const dA = a.date !== 'Unknown' ? new Date(a.date).getTime() : 0;
-                const dB = b.date !== 'Unknown' ? new Date(b.date).getTime() : 0;
-                return sortOrder === 'asc' ? dA - dB : dB - dA;
+                return sortOrder === 'asc' ? a.sortTime - b.sortTime : b.sortTime - a.sortTime;
             });
             renderTable();
             renderChart();
@@ -440,14 +470,15 @@
             const endStr = getEl('endDate').value;
 
             // Use Date objects for robust comparison
-            const startTime = startStr ? new Date(startStr).getTime() : 0;
-            const endTime = endStr ? new Date(endStr).getTime() : Number.MAX_SAFE_INTEGER;
+            // startStr is YYYY-MM-DD, parse as local time start of day
+            const startTime = startStr ? new Date(`${startStr}T00:00:00`).getTime() : 0;
+            // endStr is YYYY-MM-DD, parse as local time end of day (add 24h - 1ms essentially)
+            const endTime = endStr ? new Date(`${endStr}T23:59:59`).getTime() : Number.MAX_SAFE_INTEGER;
 
             const chartData = allResults.filter(item => {
-                if (item.date === 'Unknown') return true;
-                const itemTime = new Date(item.date).getTime();
-                return itemTime >= startTime && itemTime <= endTime;
-            }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                if (item.sortTime === 0) return true;
+                return item.sortTime >= startTime && item.sortTime <= endTime;
+            }).sort((a, b) => a.sortTime - b.sortTime);
 
             const ctx = getEl('pvtChart').getContext('2d');
             if (chartInstance) chartInstance.destroy();
