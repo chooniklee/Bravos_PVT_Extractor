@@ -5,6 +5,7 @@
     ========================================================
     UPDATE LOG
     ========================================================
+    - 2026-03-04: Fixed Excel paste issue to support dates containing time (e.g., M/D/YYYY HH:MM).
     - 2026-03-04: Added update log and UI versioning text.
     - 2026-03-04: Added time extraction from filename for exact same-day chronological sorting.
     - 2026-03-04: Enhanced Excel paste handling for macOS clipboard formatting and 2-digit years.
@@ -343,21 +344,28 @@
                 const cols = row.split('\t').map(c => c.trim());
                 if (cols.length < 7) return;
 
-                // Handle Date (MM/DD/YYYY, YYYY-MM-DD, YYYY.MM.DD, and now M/D/YY or M/D/YYYY)
+                // Handle Date (MM/DD/YYYY, YYYY-MM-DD, YYYY.MM.DD) with optional Time (HH:MM or HH:MM:SS)
                 let rawDate = cols[0];
                 let formattedDate = '';
                 
-                if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
-                    formattedDate = rawDate;
-                } else if (/^\d{4}\.\d{2}\.\d{2}$/.test(rawDate)) {
-                    formattedDate = rawDate.replace(/\./g, '-');
-                } else if (/^\d{1,2}\/\d{1,2}\/(\d{2}|\d{4})$/.test(rawDate)) {
-                    let [m, d, y] = rawDate.split('/');
+                // Separate date and time parts
+                let dateOnly = rawDate.split(' ')[0];
+                let timeOnly = rawDate.includes(' ') ? rawDate.split(' ').slice(1).join(' ') : '00:00:00';
+                if (timeOnly.split(':').length === 2) timeOnly += ':00'; // Append seconds if format is just HH:MM
+                
+                if (/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) {
+                    formattedDate = dateOnly;
+                } else if (/^\d{4}\.\d{2}\.\d{2}$/.test(dateOnly)) {
+                    formattedDate = dateOnly.replace(/\./g, '-');
+                } else if (/^\d{1,2}\/\d{1,2}\/(\d{2}|\d{4})$/.test(dateOnly)) {
+                    let [m, d, y] = dateOnly.split('/');
                     if (y.length === 2) y = '20' + y; // Assume 21st century for 2-digit years
                     formattedDate = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
                 } else {
                     return; // Header or invalid date row
                 }
+
+                let fullDisplayDate = rawDate.includes(' ') ? `${formattedDate} ${timeOnly}` : formattedDate;
 
                 const parseVal = (v) => { 
                     if (!v) return null; 
@@ -365,11 +373,11 @@
                     return isNaN(n) ? null : n; 
                 };
 
-                const timeForSort = new Date(formattedDate).getTime();
+                const timeForSort = new Date(`${formattedDate}T${timeOnly}`).getTime();
 
                 newEntries.push({
                     id: Math.random().toString(36).substr(2, 9),
-                    date: formattedDate,
+                    date: fullDisplayDate,
                     sortTime: isNaN(timeForSort) ? 0 : timeForSort,
                     dummy_90: parseVal(cols[1]), dummy_120: parseVal(cols[2]), dummy_150: parseVal(cols[3]),
                     source_90: parseVal(cols[4]), source_120: parseVal(cols[5]), source_150: parseVal(cols[6]),
