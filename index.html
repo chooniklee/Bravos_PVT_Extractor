@@ -5,6 +5,13 @@
     ========================================================
     UPDATE LOG
     ========================================================
+    - 2026-03-11: Reverted tab and sidebar title fonts to 11px. Fixed top margin alignment bug between columns.
+    - 2026-03-11: Fixed layout alignment: sidebar (Date Range, Stats) is always visible to keep empty state balanced.
+    - 2026-03-11: Uniform action buttons, removed "Copy Data Only", added "Reset" button for Date Range.
+    - 2026-03-11: Fixed Ctrl+V focus issue (removed full-screen hidden file input in empty state).
+    - 2026-03-11: Set main plot tab font sizes to 13px. Increased Date Range title font size.
+    - 2026-03-11: Redesigned UI to use main canvas for Drag & Drop / Ctrl+V Paste.
+    - 2026-03-11: Removed uppercase table headers and tracking letter-spacing classes. Increased tab font sizes.
     - 2026-03-10: Changed "NEW SOURCE" indicator to "(NEW SOURCE)" on Dummy plots and added right padding to prevent text clipping.
     - 2026-03-10: Added Source Cable SN extraction, automatic exchange detection, and vertical indicators on plots. Added "New Source" column.
     - 2026-03-10: Fixed missing top margin on PDF Report Page 2 (applied padding per page block).
@@ -48,6 +55,9 @@
         #tableScrollArea::-webkit-scrollbar-track { background: #f1f5f9; }
         #tableScrollArea::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
         #tableScrollArea::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* Custom empty state glow on drag over */
+        .drag-over { border-color: #6366f1 !important; background-color: #e0e7ff !important; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 min-h-screen p-4 md:p-8">
@@ -60,75 +70,64 @@
                     Bravos PVT Fast Extractor
                 </h1>
                 <p class="text-slate-500 mt-1 text-sm">Instant extraction, plotting, and Excel integration.</p>
-                <p class="text-slate-400 mt-1 text-[11px] italic">Last updated by Choonik Lee (March 10, 2026)</p>
+                <p class="text-slate-400 mt-1 text-[11px] italic">Last updated by Choonik Lee (March 11, 2026)</p>
             </div>
-            <div id="actionButtons" class="hidden flex flex-wrap items-center gap-3">
-                <button onclick="generateReport()" class="flex items-center gap-2 px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-all shadow-md font-medium text-sm">
-                    <i data-lucide="printer" class="w-4 h-4"></i> Generate Report
+            <!-- Action buttons are hidden until data is loaded, except Add PDFs which can always be useful but we keep logic same for now -->
+            <div id="actionButtons" class="hidden flex flex-wrap items-center gap-2">
+                <label class="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-all shadow-sm font-medium text-[13px] cursor-pointer">
+                    <i data-lucide="file-plus" class="w-4 h-4"></i> Add PDFs
+                    <input type="file" multiple accept=".pdf" class="hidden" onchange="handleFiles(event)" />
+                </label>
+                <button onclick="generateReport()" class="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50 transition-all shadow-sm font-medium text-[13px]">
+                    <i data-lucide="printer" class="w-4 h-4 text-rose-600"></i> Generate Report
                 </button>
-                <button onclick="copyToClipboard(true, event)" class="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all shadow-md font-medium text-sm">
-                    <i data-lucide="copy" class="w-4 h-4"></i> Copy with Header
+                <button onclick="copyToClipboard(event)" class="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50 transition-all shadow-sm font-medium text-[13px]">
+                    <i data-lucide="copy" class="w-4 h-4 text-indigo-600"></i> Copy to Clipboard
                 </button>
-                <button onclick="copyToClipboard(false, event)" class="flex items-center gap-2 px-4 py-2 bg-white border-2 border-indigo-800 text-indigo-800 rounded-lg hover:bg-indigo-50 transition-all shadow-sm font-bold text-sm">
-                    <i data-lucide="list" class="w-4 h-4"></i> Copy Data Only
-                </button>
-                <button onclick="clearResults()" class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-500 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors text-sm">
+                <button onclick="clearResults()" class="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-red-200 text-red-600 rounded-md hover:bg-red-50 transition-all shadow-sm font-medium text-[13px]">
                     <i data-lucide="trash-2" class="w-4 h-4"></i> Clear All
                 </button>
             </div>
         </header>
 
-        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            <!-- Sidebar -->
-            <div class="lg:col-span-1 space-y-4">
-                <!-- Data Source Selector -->
-                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="flex border-b border-slate-100">
-                        <button id="pdfTab" onclick="toggleSource('pdf')" class="flex-1 py-2 text-[10px] font-bold uppercase tracking-wider border-b-2 border-indigo-600 text-indigo-600 bg-indigo-50/50">PDF Upload</button>
-                        <button id="pasteTab" onclick="toggleSource('paste')" class="flex-1 py-2 text-[10px] font-bold uppercase tracking-wider border-b-2 border-transparent text-slate-400 hover:bg-slate-50 text-center">Excel Paste</button>
-                    </div>
-                    
-                    <div class="p-4">
-                        <div id="pdfSource" class="relative border-2 border-dashed border-slate-300 rounded-lg p-4 bg-slate-50 text-center hover:border-indigo-400 transition-colors cursor-pointer group">
-                            <input type="file" id="fileInput" multiple accept=".pdf" class="absolute inset-0 opacity-0 cursor-pointer" />
-                            <i data-lucide="file-text" class="w-6 h-6 mx-auto mb-2 text-slate-400 group-hover:text-indigo-500 transition-colors"></i>
-                            <p class="text-[11px] font-semibold text-slate-600">Drop PDF reports</p>
-                        </div>
-
-                        <div id="pasteSource" class="hidden space-y-3">
-                            <p class="text-[10px] text-slate-500 font-medium leading-tight">Paste Excel cells directly into the box below:</p>
-                            <textarea id="pasteArea" 
-                                oninput="handleAutoPaste()"
-                                placeholder="Click here and Ctrl+V to paste data..." 
-                                class="w-full h-24 text-[10px] p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none bg-slate-50 font-mono shadow-inner"
-                            ></textarea>
-                            <div id="pasteFeedback" class="hidden text-[10px] font-bold text-green-600 flex items-center gap-1 fade-in-up">
-                                <i data-lucide="check" class="w-3 h-3"></i> Data Imported!
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
+        <!-- Main Layout Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
+            <!-- Sidebar (Always visible now to maintain layout) -->
+            <div class="lg:col-span-1 flex flex-col gap-6">
+                
                 <!-- Plot Date Range Adjustment -->
-                <div id="filterContainer" class="hidden bg-white rounded-xl p-4 shadow-sm border border-slate-200 space-y-3 ring-1 ring-indigo-50">
-                    <h3 class="text-[10px] font-bold uppercase tracking-widest text-indigo-600 flex items-center gap-2">
-                        <i data-lucide="calendar-range" class="w-3 h-3"></i> Adjust Plot Date Range
-                    </h3>
-                    <div class="grid grid-cols-1 gap-2">
+                <div id="filterContainer" class="bg-white rounded-xl p-4 shadow-sm border border-slate-200 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-[11px] font-bold text-indigo-700 flex items-center gap-1.5">
+                            <i data-lucide="calendar-range" class="w-4 h-4"></i> Adjust Plot Date Range
+                        </h3>
+                        <button onclick="resetDateRange()" class="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-1 rounded font-medium transition-colors flex items-center gap-1">
+                            <i data-lucide="rotate-ccw" class="w-3 h-3"></i> Reset
+                        </button>
+                    </div>
+                    <div class="grid grid-cols-1 gap-2 mt-2">
                         <div>
-                            <label class="text-[9px] text-slate-400 font-bold uppercase">Start Date</label>
+                            <label class="text-[10px] text-slate-400 font-bold">Start Date</label>
                             <input type="date" id="startDate" oninput="handleFilterChange()" class="w-full text-xs border border-slate-200 rounded p-1.5 focus:ring-1 focus:ring-indigo-500 outline-none">
                         </div>
                         <div>
-                            <label class="text-[9px] text-slate-400 font-bold uppercase">End Date</label>
+                            <label class="text-[9px] text-slate-400 font-bold">End Date</label>
                             <input type="date" id="endDate" oninput="handleFilterChange()" class="w-full text-xs border border-slate-200 rounded p-1.5 focus:ring-1 focus:ring-indigo-500 outline-none">
                         </div>
                     </div>
                 </div>
 
+                <div id="statsSummary" class="bg-indigo-900 rounded-xl p-4 text-white shadow-lg overflow-hidden relative">
+                    <div class="relative z-10">
+                        <h3 class="text-[10px] font-bold opacity-60 mb-1 uppercase tracking-wide">Total Records</h3>
+                        <p id="totalRecordsCount" class="text-3xl font-bold">0</p>
+                    </div>
+                    <i data-lucide="activity" class="absolute right-[-10px] bottom-[-10px] w-20 h-20 opacity-10 text-white"></i>
+                </div>
+
                 <div id="progressContainer" class="hidden bg-white rounded-xl p-4 shadow-sm border border-slate-200">
                     <div class="flex items-center justify-between mb-2">
-                        <span class="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Processing</span>
+                        <span class="text-[10px] font-bold text-indigo-600">Processing</span>
                         <span id="progressText" class="text-[10px] font-bold text-slate-400">0 / 0</span>
                     </div>
                     <div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden mb-3">
@@ -136,85 +135,102 @@
                     </div>
                     <div id="currentFileName" class="text-xs text-slate-600 truncate italic"></div>
                 </div>
-
-                <div id="statsSummary" class="hidden bg-indigo-900 rounded-xl p-4 text-white shadow-lg overflow-hidden relative">
-                    <div class="relative z-10">
-                        <h3 class="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-1">Total Records</h3>
-                        <p id="totalRecordsCount" class="text-2xl font-bold">0</p>
-                    </div>
-                    <i data-lucide="activity" class="absolute right-[-10px] bottom-[-10px] w-20 h-20 opacity-10 text-white"></i>
-                </div>
             </div>
 
             <!-- Content Area -->
-            <div class="lg:col-span-3 space-y-6">
-                <!-- Chart Area -->
-                <div id="chartSection" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="p-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-                        <h2 class="text-sm font-bold text-slate-700 uppercase tracking-tight flex items-center gap-2">
-                            <i data-lucide="bar-chart-3" class="w-4 h-4"></i> Trend Analysis
-                        </h2>
+            <div class="lg:col-span-3 flex flex-col gap-6">
+                
+                <!-- Main Empty State / Drop & Paste Zone -->
+                <div id="emptyState" class="flex flex-col items-center justify-center h-[500px] border-2 border-dashed border-slate-300 rounded-xl bg-white text-slate-500 transition-colors relative group">
+                    <div class="text-center z-0">
+                        <div class="flex justify-center mb-6 relative">
+                            <div class="bg-indigo-50 p-4 rounded-full group-hover:bg-indigo-100 transition-colors">
+                                <i data-lucide="file-up" class="w-12 h-12 text-indigo-500"></i>
+                            </div>
+                            <div class="absolute -right-4 -bottom-2 bg-emerald-50 p-2 rounded-full group-hover:bg-emerald-100 transition-colors">
+                                <i data-lucide="clipboard-paste" class="w-6 h-6 text-emerald-500"></i>
+                            </div>
+                        </div>
+                        <h3 class="text-2xl font-bold text-slate-700 mb-2">Drop PDF Reports Here</h3>
+                        <p class="text-slate-500 mb-6 font-medium">Drag & drop files from your computer, or...</p>
+                        
+                        <div class="inline-flex items-center gap-2 px-5 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600 font-medium shadow-sm">
+                            <i data-lucide="keyboard" class="w-4 h-4 text-slate-400"></i>
+                            Press <kbd class="px-2 py-1 bg-white border border-slate-300 rounded shadow-sm text-xs font-mono font-bold text-slate-700">Ctrl + V</kbd> to paste Excel data anywhere
+                        </div>
                     </div>
-                    <div class="p-4">
-                        <div class="flex flex-wrap gap-1 mb-4 border-b border-slate-100 pb-2" id="chartTabs">
-                            <button onclick="switchChart('dummy_90', event)" class="tab-btn active-tab-dummy px-3 py-1 text-[10px] font-bold rounded-t-lg border-b-2 transition-all hover:bg-slate-50">Dummy 90cm</button>
-                            <button onclick="switchChart('dummy_120', event)" class="tab-btn border-transparent px-3 py-1 text-[10px] font-bold rounded-t-lg border-b-2 transition-all hover:bg-slate-50">Dummy 120cm</button>
-                            <button onclick="switchChart('dummy_150', event)" class="tab-btn border-transparent px-3 py-1 text-[10px] font-bold rounded-t-lg border-b-2 transition-all hover:bg-slate-50">Dummy 150cm</button>
-                            <button onclick="switchChart('source_90', event)" class="tab-btn border-transparent px-3 py-1 text-[10px] font-bold rounded-t-lg border-b-2 transition-all hover:bg-slate-50">Source 90cm</button>
-                            <button onclick="switchChart('source_120', event)" class="tab-btn border-transparent px-3 py-1 text-[10px] font-bold rounded-t-lg border-b-2 transition-all hover:bg-slate-50">Source 120cm</button>
-                            <button onclick="switchChart('source_150', event)" class="tab-btn border-transparent px-3 py-1 text-[10px] font-bold rounded-t-lg border-b-2 transition-all hover:bg-slate-50">Source 150cm</button>
-                        </div>
-                        <div class="h-[250px] w-full">
-                            <canvas id="pvtChart"></canvas>
-                        </div>
+                    
+                    <!-- Feedback toast for pasting -->
+                    <div id="pasteFeedback" class="absolute top-4 bg-emerald-100 text-emerald-800 px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 shadow-sm transition-opacity duration-300 opacity-0 pointer-events-none">
+                        <i data-lucide="check-circle" class="w-4 h-4"></i> Data Imported Successfully!
                     </div>
                 </div>
 
-                <!-- Table Area -->
-                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div id="emptyState" class="flex flex-col items-center justify-center h-[350px] text-slate-400">
-                        <i data-lucide="table" class="w-10 h-10 mb-3 text-slate-200"></i>
-                        <p class="text-sm">No data extracted yet.</p>
-                    </div>
-                    
-                    <div id="tableContainer" class="hidden overflow-x-auto relative">
-                        <!-- Scroll area limited to approx 8 rows -->
-                        <div id="tableScrollArea" class="max-h-[210px] overflow-y-auto overflow-x-hidden">
-                            <table class="w-full text-left text-[11px] border-collapse tight-table">
-                                <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider sticky top-0 z-20 shadow-sm">
-                                    <tr>
-                                        <th onclick="toggleSort()" class="px-3 py-2 border-r border-slate-200 cursor-pointer hover:bg-slate-100 transition-colors select-none">
-                                            <div class="flex items-center justify-between">
-                                                <span>Date</span>
-                                                <i id="sortIcon" data-lucide="chevron-up" class="w-3 h-3 text-indigo-600"></i>
-                                            </div>
-                                        </th>
-                                        <th colSpan="3" class="px-2 py-2 text-center border-r border-slate-200 bg-indigo-50/30 text-indigo-800">Dummy Cable Error (cm)</th>
-                                        <th colSpan="3" class="px-2 py-2 text-center border-r border-slate-200 bg-indigo-50/30 text-indigo-800">Source Cable Error (cm)</th>
-                                        <th colSpan="2" class="px-2 py-2 text-center bg-slate-50 border-l border-slate-200">Status</th>
-                                    </tr>
-                                    <tr class="bg-slate-50 border-b border-slate-200 text-[9px]">
-                                        <th class="px-3 py-1.5 border-r border-slate-200">Date / Time</th>
-                                        <th class="px-2 py-1.5 text-center border-r border-slate-100">90</th>
-                                        <th class="px-2 py-1.5 text-center border-r border-slate-100">120</th>
-                                        <th class="px-2 py-1.5 text-center border-r border-slate-200">150</th>
-                                        <th class="px-2 py-1.5 text-center border-r border-slate-100">90</th>
-                                        <th class="px-2 py-1.5 text-center border-r border-slate-100">120</th>
-                                        <th class="px-2 py-1.5 text-center border-r border-slate-200">150</th>
-                                        <th class="px-2 py-1.5 text-center bg-slate-50">Calib?</th>
-                                        <th class="px-2 py-1.5 text-center bg-slate-50 border-l border-slate-100">New Src?</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="resultBody" class="divide-y divide-slate-100"></tbody>
-                            </table>
+                <div id="dataViewContainer" class="hidden flex-col gap-6">
+                    <!-- Chart Area -->
+                    <div id="chartSection" class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div class="p-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                            <h2 class="text-sm font-bold text-slate-700 flex items-center gap-2">
+                                <i data-lucide="bar-chart-3" class="w-4 h-4"></i> Trend Analysis
+                            </h2>
+                        </div>
+                        <div class="p-4">
+                            <!-- Using text-[11px] as requested -->
+                            <div class="flex flex-wrap gap-1 mb-4 border-b border-slate-100 pb-2" id="chartTabs">
+                                <button onclick="switchChart('dummy_90', event)" class="tab-btn active-tab-dummy px-4 py-2 text-[11px] font-bold rounded-t-lg border-b-2 transition-all hover:bg-slate-50">Dummy 90cm</button>
+                                <button onclick="switchChart('dummy_120', event)" class="tab-btn border-transparent px-4 py-2 text-[11px] font-bold rounded-t-lg border-b-2 transition-all hover:bg-slate-50">Dummy 120cm</button>
+                                <button onclick="switchChart('dummy_150', event)" class="tab-btn border-transparent px-4 py-2 text-[11px] font-bold rounded-t-lg border-b-2 transition-all hover:bg-slate-50">Dummy 150cm</button>
+                                <button onclick="switchChart('source_90', event)" class="tab-btn border-transparent px-4 py-2 text-[11px] font-bold rounded-t-lg border-b-2 transition-all hover:bg-slate-50">Source 90cm</button>
+                                <button onclick="switchChart('source_120', event)" class="tab-btn border-transparent px-4 py-2 text-[11px] font-bold rounded-t-lg border-b-2 transition-all hover:bg-slate-50">Source 120cm</button>
+                                <button onclick="switchChart('source_150', event)" class="tab-btn border-transparent px-4 py-2 text-[11px] font-bold rounded-t-lg border-b-2 transition-all hover:bg-slate-50">Source 150cm</button>
+                            </div>
+                            <div class="h-[250px] w-full">
+                                <canvas id="pvtChart"></canvas>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div id="footerInfo" class="hidden mt-3 flex justify-between items-center text-[9px] text-slate-400 font-bold uppercase tracking-widest px-2">
-                    <div class="flex items-center gap-1">
-                        <i data-lucide="check-circle" class="w-2.5 h-2.5 text-green-500"></i> Local Records Synced
+
+                    <!-- Table Area -->
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div id="tableContainer" class="overflow-x-auto relative">
+                            <!-- Scroll area limited to approx 8 rows -->
+                            <div id="tableScrollArea" class="max-h-[210px] overflow-y-auto overflow-x-hidden">
+                                <table class="w-full text-left text-[11px] border-collapse tight-table">
+                                    <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold sticky top-0 z-20 shadow-sm">
+                                        <tr>
+                                            <th onclick="toggleSort()" class="px-3 py-2 border-r border-slate-200 cursor-pointer hover:bg-slate-100 transition-colors select-none">
+                                                <div class="flex items-center justify-between">
+                                                    <span>Date</span>
+                                                    <i id="sortIcon" data-lucide="chevron-up" class="w-3 h-3 text-indigo-600"></i>
+                                                </div>
+                                            </th>
+                                            <th colSpan="3" class="px-2 py-2 text-center border-r border-slate-200 bg-indigo-50/30 text-indigo-800">Dummy Cable Error (cm)</th>
+                                            <th colSpan="3" class="px-2 py-2 text-center border-r border-slate-200 bg-indigo-50/30 text-indigo-800">Source Cable Error (cm)</th>
+                                            <th colSpan="2" class="px-2 py-2 text-center bg-slate-50 border-l border-slate-200">Status</th>
+                                        </tr>
+                                        <tr class="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500 font-medium">
+                                            <th class="px-3 py-1.5 border-r border-slate-200">Date / Time</th>
+                                            <th class="px-2 py-1.5 text-center border-r border-slate-100">90</th>
+                                            <th class="px-2 py-1.5 text-center border-r border-slate-100">120</th>
+                                            <th class="px-2 py-1.5 text-center border-r border-slate-200">150</th>
+                                            <th class="px-2 py-1.5 text-center border-r border-slate-100">90</th>
+                                            <th class="px-2 py-1.5 text-center border-r border-slate-100">120</th>
+                                            <th class="px-2 py-1.5 text-center border-r border-slate-200">150</th>
+                                            <th class="px-2 py-1.5 text-center bg-slate-50">Calib?</th>
+                                            <th class="px-2 py-1.5 text-center bg-slate-50 border-l border-slate-100">New Src?</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="resultBody" class="divide-y divide-slate-100"></tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
-                    <div id="recordCount">Records: 0</div>
+                    <div id="footerInfo" class="mt-3 flex justify-between items-center text-[10px] text-slate-400 font-bold px-2">
+                        <div class="flex items-center gap-1">
+                            <i data-lucide="check-circle" class="w-3 h-3 text-green-500"></i> Local Records Synced
+                        </div>
+                        <div id="recordCount">Records: 0</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -232,18 +248,34 @@
 
         function initApp() {
             lucide.createIcons();
+            
+            // Handle file input changes
             const fileInput = getEl('fileInput');
             if (fileInput) fileInput.addEventListener('change', handleFiles);
+
+            // Global Drag & Drop Handlers to visually interact with the dropzone
+            const emptyState = getEl('emptyState');
             
-            const dropZone = getEl('dropZone');
-            if (dropZone) {
-                dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.currentTarget.classList.add('border-indigo-400'); });
-                dropZone.addEventListener('dragleave', (e) => { e.currentTarget.classList.remove('border-indigo-400'); });
-                dropZone.addEventListener('drop', (e) => {
-                    e.preventDefault(); e.currentTarget.classList.remove('border-indigo-400');
+            document.body.addEventListener('dragover', (e) => { 
+                e.preventDefault(); 
+                if (emptyState && !emptyState.classList.contains('hidden')) {
+                    emptyState.classList.add('drag-over');
+                }
+            });
+            document.body.addEventListener('dragleave', (e) => { 
+                e.preventDefault(); 
+                if (emptyState) emptyState.classList.remove('drag-over');
+            });
+            document.body.addEventListener('drop', (e) => {
+                e.preventDefault(); 
+                if (emptyState) emptyState.classList.remove('drag-over');
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
                     handleFiles({ target: { files: e.dataTransfer.files } });
-                });
-            }
+                }
+            });
+
+            // Global Paste Listener
+            document.addEventListener('paste', handleGlobalPaste);
 
             // Attach robust listeners for date changes
             const startDate = getEl('startDate');
@@ -260,25 +292,6 @@
         }
 
         document.addEventListener('DOMContentLoaded', initApp);
-
-        function toggleSource(type) {
-            const pdfBtn = getEl('pdfTab'), pasteBtn = getEl('pasteTab');
-            const pdfSrc = getEl('pdfSource'), pasteSrc = getEl('pasteSource');
-
-            if (type === 'pdf') {
-                pdfBtn.classList.add('border-indigo-600', 'text-indigo-600', 'bg-indigo-50/50');
-                pdfBtn.classList.remove('border-transparent', 'text-slate-400');
-                pasteBtn.classList.add('border-transparent', 'text-slate-400');
-                pasteBtn.classList.remove('border-indigo-600', 'text-indigo-600', 'bg-indigo-50/50');
-                pdfSrc.classList.remove('hidden'); pasteSrc.classList.add('hidden');
-            } else {
-                pasteBtn.classList.add('border-indigo-600', 'text-indigo-600', 'bg-indigo-50/50');
-                pasteBtn.classList.remove('border-transparent', 'text-slate-400');
-                pdfBtn.classList.add('border-transparent', 'text-slate-400');
-                pdfBtn.classList.remove('border-indigo-600', 'text-indigo-600', 'bg-indigo-50/50');
-                pasteSrc.classList.remove('hidden'); pdfSrc.classList.add('hidden');
-            }
-        }
 
         async function handleFiles(e) {
             const files = Array.from(e.target.files).filter(f => f.type === 'application/pdf');
@@ -297,6 +310,9 @@
                 } catch (err) { console.error("Error processing " + file.name, err); }
             }
             getEl('progressContainer').classList.add('hidden');
+            
+            // Reset input values so the same file can be selected again if needed
+            if(e.target) e.target.value = '';
             lucide.createIcons();
         }
 
@@ -354,12 +370,18 @@
             };
         }
 
-        // Auto-detect when text is pasted into the box
-        function handleAutoPaste() {
-            const text = getEl('pasteArea').value.trim();
-            if (!text) return;
+        // Handle Paste Events Globally
+        function handleGlobalPaste(e) {
+            // Ignore paste events happening inside specific input fields like date pickers
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
-            // Updated split to handle MacOS legacy CR, Windows CRLF, and Unix LF
+            const text = (e.clipboardData || window.clipboardData).getData('text');
+            if (text) {
+                processPastedText(text);
+            }
+        }
+
+        function processPastedText(text) {
             const rows = text.split(/\r\n|\n|\r/);
             const newEntries = [];
 
@@ -420,9 +442,14 @@
             if (newEntries.length > 0) {
                 allResults = [...allResults, ...newEntries];
                 updateDateRange(); // Update range for new pasted data
-                getEl('pasteArea').value = '';
-                getEl('pasteFeedback').classList.remove('hidden');
-                setTimeout(() => getEl('pasteFeedback').classList.add('hidden'), 3000);
+                
+                // Show visual feedback
+                const feedback = getEl('pasteFeedback');
+                if (feedback) {
+                    feedback.classList.remove('opacity-0');
+                    setTimeout(() => feedback.classList.add('opacity-0'), 2500);
+                }
+                
                 renderAll();
             }
         }
@@ -450,6 +477,11 @@
             getEl('endDate').value = fmt(maxD);
         }
 
+        function resetDateRange() {
+            updateDateRange();
+            handleFilterChange();
+        }
+
         function handleFilterChange() {
             renderChart();
         }
@@ -474,11 +506,20 @@
         }
 
         function renderAll() {
-            if (allResults.length === 0) return;
-            ['emptyState', 'tableContainer', 'actionButtons', 'footerInfo', 'statsSummary', 'chartSection', 'filterContainer'].forEach(id => {
-                const el = getEl(id);
-                if (el) id === 'emptyState' ? el.classList.add('hidden') : el.classList.remove('hidden');
-            });
+            if (allResults.length === 0) {
+                clearResults();
+                return;
+            }
+            
+            // Hide empty state, show data view and action buttons
+            getEl('emptyState').classList.add('hidden');
+            // Re-apply correct display classes by removing generic 'hidden'
+            getEl('dataViewContainer').classList.remove('hidden');
+            getEl('dataViewContainer').classList.add('flex'); // Add flex back since it was hidden
+            getEl('actionButtons').classList.remove('hidden');
+            
+            // Note: filterContainer and statsSummary are now always visible, just updating values
+
             getEl('totalRecordsCount').innerText = allResults.length;
             
             allResults.sort((a, b) => {
@@ -503,10 +544,10 @@
                     <td class="px-2 py-1 text-center border-r border-slate-100 ${isOut(item.source_120) ? 'text-red-600 font-bold bg-red-50/50' : ''}">${formatNum(item.source_120)}</td>
                     <td class="px-2 py-1 text-center border-r border-slate-200 ${isOut(item.source_150) ? 'text-red-600 font-bold bg-red-50/50' : ''}">${formatNum(item.source_150)}</td>
                     <td class="px-2 py-1 text-center">
-                        ${item.calibration_performed ? '<span class="inline-flex items-center px-1.5 py-0 rounded-[3px] text-[8px] font-bold bg-amber-100 text-amber-900 uppercase ring-1 ring-amber-300">Performed</span>' : '<span class="text-slate-300">—</span>'}
+                        ${item.calibration_performed ? '<span class="inline-flex items-center px-1.5 py-0 rounded-[3px] text-[8px] font-bold bg-amber-100 text-amber-900 ring-1 ring-amber-300">Performed</span>' : '<span class="text-slate-300">—</span>'}
                     </td>
                     <td class="px-2 py-1 text-center border-l border-slate-100">
-                        ${item.is_new_source ? '<span class="inline-flex items-center px-1.5 py-0 rounded-[3px] text-[8px] font-bold bg-rose-100 text-rose-700 uppercase ring-1 ring-rose-300">New</span>' : '<span class="text-slate-300">—</span>'}
+                        ${item.is_new_source ? '<span class="inline-flex items-center px-1.5 py-0 rounded-[3px] text-[8px] font-bold bg-rose-100 text-rose-700 ring-1 ring-rose-300">New</span>' : '<span class="text-slate-300">—</span>'}
                     </td>
                 </tr>
             `).join('');
@@ -603,12 +644,15 @@
                 }
             };
 
+            // Use replacement for replacing '_' with ' ' then capitalize each word
+            const capWords = (str) => str.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
             chartInstance = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: chartData.map(d => d.date), // Keeps full string (Date + Time) internally
                     datasets: [{ 
-                        label: activeKey.toUpperCase().replace('_', ' ') + ' Error (cm)', 
+                        label: capWords(activeKey) + ' Error (cm)', 
                         data: chartData.map(d => d[activeKey]), 
                         borderColor: mainColor, backgroundColor: bgColor, 
                         borderWidth: 2, tension: 0.1, pointRadius: 4, fill: true,
@@ -655,26 +699,40 @@
             });
         }
 
-        async function copyToClipboard(withHeader, ev) {
+        async function copyToClipboard(ev) {
             const btn = ev.currentTarget;
             const headers = ["Date", "Dummy 90", "Dummy 120", "Dummy 150", "Source 90", "Source 120", "Source 150", "Calibration Performed", "New Source"].join("\t");
             const dataRows = allResults.map(r => [r.date, r.dummy_90, r.dummy_120, r.dummy_150, r.source_90, r.source_120, r.source_150, r.calibration_performed ? "Yes" : "", r.is_new_source ? "Yes" : ""].join("\t")).join("\n");
-            const finalString = withHeader ? headers + "\n" + dataRows : dataRows;
+            const finalString = headers + "\n" + dataRows;
             
             try {
                 const el = document.createElement('textarea'); el.value = finalString; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el);
                 const original = btn.innerHTML;
-                btn.innerHTML = `<i data-lucide="check" class="w-4 h-4"></i> Copied!`;
-                btn.classList.add('bg-green-600', 'text-white');
-                setTimeout(() => { btn.innerHTML = original; btn.classList.remove('bg-green-600', 'text-white'); lucide.createIcons(); }, 2000);
+                btn.innerHTML = `<i data-lucide="check" class="w-4 h-4 text-emerald-600"></i> Copied!`;
+                btn.classList.add('bg-emerald-50', 'text-emerald-700', 'border-emerald-200');
+                btn.classList.remove('bg-white', 'text-slate-700', 'border-slate-300');
+                setTimeout(() => { 
+                    btn.innerHTML = original; 
+                    btn.classList.remove('bg-emerald-50', 'text-emerald-700', 'border-emerald-200');
+                    btn.classList.add('bg-white', 'text-slate-700', 'border-slate-300');
+                    lucide.createIcons(); 
+                }, 2000);
             } catch(e) { alert("Copy failed."); }
         }
 
         function clearResults() {
             allResults = [];
-            ['tableContainer', 'actionButtons', 'footerInfo', 'statsSummary', 'chartSection', 'filterContainer'].forEach(id => getEl(id).classList.add('hidden'));
-            getEl('emptyState').classList.remove('hidden'); getEl('fileInput').value = ''; 
-            getEl('startDate').value = ''; getEl('endDate').value = ''; getEl('pasteArea').value = '';
+            getEl('dataViewContainer').classList.add('hidden');
+            getEl('dataViewContainer').classList.remove('flex');
+            getEl('actionButtons').classList.add('hidden');
+            
+            // Reset Sidebar Data
+            getEl('startDate').value = ''; 
+            getEl('endDate').value = ''; 
+            getEl('totalRecordsCount').innerText = '0';
+            
+            getEl('emptyState').classList.remove('hidden');
+            
             if (chartInstance) chartInstance.destroy();
         }
 
@@ -751,15 +809,15 @@
 
                             <!-- Hardcoded canvas widths/heights to bypass dynamic clipping bug -->
                             <div class="chart-block">
-                                <h3 class="font-bold text-[16px] text-indigo-900 mb-1 tracking-wide">Dummy Cable 90 cm</h3>
+                                <h3 class="font-bold text-[16px] text-indigo-900 mb-1">Dummy Cable 90 cm</h3>
                                 <canvas id="c_dummy_90" width="1200" height="320"></canvas>
                             </div>
                             <div class="chart-block">
-                                <h3 class="font-bold text-[16px] text-indigo-900 mb-1 tracking-wide">Dummy Cable 120 cm</h3>
+                                <h3 class="font-bold text-[16px] text-indigo-900 mb-1">Dummy Cable 120 cm</h3>
                                 <canvas id="c_dummy_120" width="1200" height="320"></canvas>
                             </div>
                             <div class="chart-block">
-                                <h3 class="font-bold text-[16px] text-indigo-900 mb-1 tracking-wide">Dummy Cable 150 cm</h3>
+                                <h3 class="font-bold text-[16px] text-indigo-900 mb-1">Dummy Cable 150 cm</h3>
                                 <canvas id="c_dummy_150" width="1200" height="320"></canvas>
                             </div>
                             
@@ -786,15 +844,15 @@
                             </div>
 
                             <div class="chart-block">
-                                <h3 class="font-bold text-[16px] text-emerald-900 mb-1 tracking-wide">Source Cable 90 cm</h3>
+                                <h3 class="font-bold text-[16px] text-emerald-900 mb-1">Source Cable 90 cm</h3>
                                 <canvas id="c_source_90" width="1200" height="320"></canvas>
                             </div>
                             <div class="chart-block">
-                                <h3 class="font-bold text-[16px] text-emerald-900 mb-1 tracking-wide">Source Cable 120 cm</h3>
+                                <h3 class="font-bold text-[16px] text-emerald-900 mb-1">Source Cable 120 cm</h3>
                                 <canvas id="c_source_120" width="1200" height="320"></canvas>
                             </div>
                             <div class="chart-block">
-                                <h3 class="font-bold text-[16px] text-emerald-900 mb-1 tracking-wide">Source Cable 150 cm</h3>
+                                <h3 class="font-bold text-[16px] text-emerald-900 mb-1">Source Cable 150 cm</h3>
                                 <canvas id="c_source_150" width="1200" height="320"></canvas>
                             </div>
                             
