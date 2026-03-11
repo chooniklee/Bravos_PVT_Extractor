@@ -5,6 +5,7 @@
     ========================================================
     UPDATE LOG
     ========================================================
+    - 2026-03-11: Added alphabetical file sorting before processing to ensure chronological sequential plotting.
     - 2026-03-11: Reverted tab and sidebar title fonts to 11px. Fixed top margin alignment bug between columns.
     - 2026-03-11: Fixed layout alignment: sidebar (Date Range, Stats) is always visible to keep empty state balanced.
     - 2026-03-11: Uniform action buttons, removed "Copy Data Only", added "Reset" button for Date Range.
@@ -296,6 +297,11 @@
         async function handleFiles(e) {
             const files = Array.from(e.target.files).filter(f => f.type === 'application/pdf');
             if (files.length === 0) return;
+
+            // Sort files alphabetically by name to ensure chronological processing
+            // Since filenames contain format like PVT-YYYY-MM-DD-HH-MM-SS.PDF
+            files.sort((a, b) => a.name.localeCompare(b.name));
+
             getEl('progressContainer').classList.remove('hidden');
             let processedCount = 0;
             for (const file of files) {
