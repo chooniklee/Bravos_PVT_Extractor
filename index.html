@@ -5,6 +5,8 @@
     ========================================================
     UPDATE LOG
     ========================================================
+    - 2026-03-10: Changed "NEW SOURCE" indicator to "(NEW SOURCE)" on Dummy plots and added right padding to prevent text clipping.
+    - 2026-03-10: Added Source Cable SN extraction, automatic exchange detection, and vertical indicators on plots. Added "New Source" column.
     - 2026-03-10: Fixed missing top margin on PDF Report Page 2 (applied padding per page block).
     - 2026-03-10: Increased Y-axis font size/weight (Main UI & PDF), updated PDF plot titles (removed "ERROR").
     - 2026-03-10: Main UI Source plots/tabs colored green, Tab active state CSS fixed, PDF title cm capitalization fixed.
@@ -189,7 +191,7 @@
                                         </th>
                                         <th colSpan="3" class="px-2 py-2 text-center border-r border-slate-200 bg-indigo-50/30 text-indigo-800">Dummy Cable Error (cm)</th>
                                         <th colSpan="3" class="px-2 py-2 text-center border-r border-slate-200 bg-indigo-50/30 text-indigo-800">Source Cable Error (cm)</th>
-                                        <th class="px-2 py-2 text-center bg-slate-50">Status</th>
+                                        <th colSpan="2" class="px-2 py-2 text-center bg-slate-50 border-l border-slate-200">Status</th>
                                     </tr>
                                     <tr class="bg-slate-50 border-b border-slate-200 text-[9px]">
                                         <th class="px-3 py-1.5 border-r border-slate-200">Date / Time</th>
@@ -200,6 +202,7 @@
                                         <th class="px-2 py-1.5 text-center border-r border-slate-100">120</th>
                                         <th class="px-2 py-1.5 text-center border-r border-slate-200">150</th>
                                         <th class="px-2 py-1.5 text-center bg-slate-50">Calib?</th>
+                                        <th class="px-2 py-1.5 text-center bg-slate-50 border-l border-slate-100">New Src?</th>
                                     </tr>
                                 </thead>
                                 <tbody id="resultBody" class="divide-y divide-slate-100"></tbody>
@@ -322,6 +325,10 @@
                 sortTime = new Date(`${fnMatch[1]}T${fnMatch[2]}:${fnMatch[3]}:${fnMatch[4]}`).getTime();
             }
 
+            // Extract Source Cable SN
+            const sourceCableMatch = fullText.match(/Source Cable\s+([A-Z0-9-]+)/i);
+            const sourceSn = sourceCableMatch ? sourceCableMatch[1] : 'Unknown';
+
             const hasCalibration = fullText.includes('Post-Calibration');
             const numPattern = /[+-]\d\.\d{2}/g;
             const allNumbers = fullText.match(numPattern) || [];
@@ -338,6 +345,9 @@
                 id: Math.random().toString(36).substr(2, 9), 
                 date: dateStr, 
                 sortTime: sortTime,
+                source_sn: sourceSn,
+                pasted_new_source: false, // Flag for explicitly pasted new source marker
+                is_new_source: false,     // Calculated flag
                 dummy_90: d[0], dummy_120: d[1], dummy_150: d[2], 
                 source_90: s[0], source_120: s[1], source_150: s[2], 
                 calibration_performed: hasCalibration 
@@ -388,10 +398,19 @@
 
                 const timeForSort = new Date(`${formattedDate}T${timeOnly}`).getTime();
 
+                // Check for 9th column indicating a New Source
+                let pastedNewSource = false;
+                if (cols.length >= 9) {
+                    pastedNewSource = cols[8].toLowerCase().includes('yes') || cols[8].toLowerCase().includes('true');
+                }
+
                 newEntries.push({
                     id: Math.random().toString(36).substr(2, 9),
                     date: fullDisplayDate,
                     sortTime: isNaN(timeForSort) ? 0 : timeForSort,
+                    source_sn: 'Unknown', // Calculate later or let manual paste flag dictate
+                    pasted_new_source: pastedNewSource,
+                    is_new_source: false, // Calculated later
                     dummy_90: parseVal(cols[1]), dummy_120: parseVal(cols[2]), dummy_150: parseVal(cols[3]),
                     source_90: parseVal(cols[4]), source_120: parseVal(cols[5]), source_150: parseVal(cols[6]),
                     calibration_performed: cols[7] ? (cols[7].toLowerCase().includes('yes') || cols[7].toLowerCase().includes('true')) : false
@@ -435,6 +454,25 @@
             renderChart();
         }
 
+        function calculateSourceExchanges() {
+            let current_sn = null;
+            // Iterate chronologically to find where the SN changes
+            allResults.forEach(item => {
+                item.is_new_source = false; // Reset to recalculate safely
+                
+                if (item.pasted_new_source) {
+                    item.is_new_source = true;
+                } else if (item.source_sn && item.source_sn !== 'Unknown') {
+                    if (current_sn === null) {
+                        current_sn = item.source_sn; // Set initial valid SN, don't flag as change
+                    } else if (current_sn !== item.source_sn) {
+                        item.is_new_source = true;
+                        current_sn = item.source_sn; // Update to the new SN
+                    }
+                }
+            });
+        }
+
         function renderAll() {
             if (allResults.length === 0) return;
             ['emptyState', 'tableContainer', 'actionButtons', 'footerInfo', 'statsSummary', 'chartSection', 'filterContainer'].forEach(id => {
@@ -446,6 +484,10 @@
             allResults.sort((a, b) => {
                 return sortOrder === 'asc' ? a.sortTime - b.sortTime : b.sortTime - a.sortTime;
             });
+
+            // After sorting, detect where the source changes
+            calculateSourceExchanges();
+
             renderTable();
             renderChart();
         }
@@ -462,6 +504,9 @@
                     <td class="px-2 py-1 text-center border-r border-slate-200 ${isOut(item.source_150) ? 'text-red-600 font-bold bg-red-50/50' : ''}">${formatNum(item.source_150)}</td>
                     <td class="px-2 py-1 text-center">
                         ${item.calibration_performed ? '<span class="inline-flex items-center px-1.5 py-0 rounded-[3px] text-[8px] font-bold bg-amber-100 text-amber-900 uppercase ring-1 ring-amber-300">Performed</span>' : '<span class="text-slate-300">—</span>'}
+                    </td>
+                    <td class="px-2 py-1 text-center border-l border-slate-100">
+                        ${item.is_new_source ? '<span class="inline-flex items-center px-1.5 py-0 rounded-[3px] text-[8px] font-bold bg-rose-100 text-rose-700 uppercase ring-1 ring-rose-300">New</span>' : '<span class="text-slate-300">—</span>'}
                     </td>
                 </tr>
             `).join('');
@@ -521,6 +566,42 @@
             const isSource = activeKey.startsWith('source');
             const mainColor = isSource ? '#059669' : '#4f46e5';
             const bgColor = isSource ? 'rgba(5, 150, 105, 0.1)' : 'rgba(99, 102, 241, 0.1)';
+            
+            // Set indicator text depending on whether it's a Source or Dummy plot
+            const indicatorText = isSource ? 'NEW SOURCE' : '(NEW SOURCE)';
+
+            // Custom Plugin to draw vertical lines where a source exchange occurred
+            const sourceExchangePlugin = {
+                id: 'sourceExchange',
+                afterDraw: (chart) => {
+                    const ctx = chart.ctx;
+                    const xAxis = chart.scales.x;
+                    const yAxis = chart.scales.y;
+                    
+                    chartData.forEach((d, index) => {
+                        if (d.is_new_source) {
+                            const x = xAxis.getPixelForValue(index);
+                            
+                            ctx.save();
+                            ctx.beginPath();
+                            ctx.moveTo(x, yAxis.top);
+                            ctx.lineTo(x, yAxis.bottom);
+                            ctx.lineWidth = 1.5;
+                            ctx.strokeStyle = '#ef4444'; // Red line
+                            ctx.setLineDash([4, 4]);
+                            ctx.stroke();
+                            
+                            // "NEW SOURCE" or "(NEW SOURCE)" Label
+                            ctx.fillStyle = '#ef4444';
+                            ctx.font = 'bold 9px Inter';
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'bottom';
+                            ctx.fillText(indicatorText, x, yAxis.top - 2);
+                            ctx.restore();
+                        }
+                    });
+                }
+            };
 
             chartInstance = new Chart(ctx, {
                 type: 'line',
@@ -537,6 +618,10 @@
                 },
                 options: {
                     responsive: true, maintainAspectRatio: false,
+                    layout: {
+                        // Added right padding to prevent "NEW SOURCE" text clipping on the last data point
+                        padding: { top: 15, right: 35 } 
+                    },
                     scales: {
                         y: { 
                             min: -0.15, max: 0.15, 
@@ -565,14 +650,15 @@
                             }
                         } 
                     }
-                }
+                },
+                plugins: [sourceExchangePlugin] // Injecting the custom vertical line plugin
             });
         }
 
         async function copyToClipboard(withHeader, ev) {
             const btn = ev.currentTarget;
-            const headers = ["Date", "Dummy 90", "Dummy 120", "Dummy 150", "Source 90", "Source 120", "Source 150", "Calibration Performed"].join("\t");
-            const dataRows = allResults.map(r => [r.date, r.dummy_90, r.dummy_120, r.dummy_150, r.source_90, r.source_120, r.source_150, r.calibration_performed ? "Yes" : ""].join("\t")).join("\n");
+            const headers = ["Date", "Dummy 90", "Dummy 120", "Dummy 150", "Source 90", "Source 120", "Source 150", "Calibration Performed", "New Source"].join("\t");
+            const dataRows = allResults.map(r => [r.date, r.dummy_90, r.dummy_120, r.dummy_150, r.source_90, r.source_120, r.source_150, r.calibration_performed ? "Yes" : "", r.is_new_source ? "Yes" : ""].join("\t")).join("\n");
             const finalString = withHeader ? headers + "\n" + dataRows : dataRows;
             
             try {
@@ -726,6 +812,41 @@
                             return d.date.split(' ')[0];
                         });
                         
+                        const sourceExchangePlugin = {
+                            id: 'sourceExchange',
+                            afterDraw: (chart) => {
+                                const ctx = chart.ctx;
+                                const xAxis = chart.scales.x;
+                                const yAxis = chart.scales.y;
+                                
+                                // Determine if this is a dummy plot by checking the canvas ID
+                                const isDummy = chart.canvas.id.includes('dummy');
+                                const indicatorText = isDummy ? '(NEW SOURCE)' : 'NEW SOURCE';
+                                
+                                data.forEach((d, index) => {
+                                    if (d.is_new_source) {
+                                        const x = xAxis.getPixelForValue(index);
+                                        
+                                        ctx.save();
+                                        ctx.beginPath();
+                                        ctx.moveTo(x, yAxis.top);
+                                        ctx.lineTo(x, yAxis.bottom);
+                                        ctx.lineWidth = 2;
+                                        ctx.strokeStyle = '#ef4444'; // Red line
+                                        ctx.setLineDash([5, 5]);
+                                        ctx.stroke();
+                                        
+                                        ctx.fillStyle = '#ef4444';
+                                        ctx.font = 'bold 12px sans-serif'; // Bigger font for print
+                                        ctx.textAlign = 'center';
+                                        ctx.textBaseline = 'bottom';
+                                        ctx.fillText(indicatorText, x, yAxis.top - 2);
+                                        ctx.restore();
+                                    }
+                                });
+                            }
+                        };
+
                         function createChart(id, key, color) {
                             new Chart(document.getElementById(id).getContext('2d'), {
                                 type: 'line',
@@ -750,7 +871,8 @@
                                     maintainAspectRatio: false,
                                     animation: false, 
                                     layout: {
-                                        padding: { right: 25, left: 10, top: 10, bottom: 10 } 
+                                        // Increased right padding from 25 to 45 to ensure (NEW SOURCE) doesn't get cut off
+                                        padding: { right: 45, left: 10, top: 18, bottom: 10 } 
                                     },
                                     scales: {
                                         y: { 
@@ -769,7 +891,8 @@
                                         }
                                     },
                                     plugins: { legend: { display: false } }
-                                }
+                                },
+                                plugins: [sourceExchangePlugin]
                             });
                         }
 
