@@ -61,7 +61,29 @@
         .drag-over { border-color: #6366f1 !important; background-color: #e0e7ff !important; }
     </style>
 </head>
+
 <body class="bg-slate-50 text-slate-900 min-h-screen p-4 md:p-8">
+
+    <!-- Disclaimer Modal Overlay -->
+    <div id="disclaimerModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm transition-opacity duration-300" onclick="dismissDisclaimer(event)">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 m-4 transform transition-all" onclick="event.stopPropagation()">
+            <div class="flex items-center gap-3 mb-4 text-indigo-900">
+                <i data-lucide="shield-alert" class="w-8 h-8 text-amber-500"></i>
+                <h2 class="text-2xl font-bold tracking-tight">Disclaimer & Terms of Use</h2>
+            </div>
+            <div class="text-slate-600 text-sm space-y-3 mb-6 leading-relaxed">
+                <p>This application is provided free of charge for internal clinical QA, academic, and informational purposes only. <strong class="text-slate-800">Commercial use, resale, or distribution for profit is strictly prohibited.</strong></p>
+                <p>This tool is not a substitute for official record-keeping or professional clinical judgment. The end user is solely responsible for independently verifying the accuracy of all extracted data and generated plots against the original source documents.</p>
+                <p>The developers assume no responsibility or liability for any errors, omissions, or clinical decisions made based on the use of this tool.</p>
+            </div>
+            <div class="flex justify-end">
+                <button onclick="dismissDisclaimer()" class="px-6 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all shadow-md font-bold text-sm flex items-center gap-2">
+                    <i data-lucide="check" class="w-4 h-4"></i> I Acknowledge
+                </button>
+            </div>
+        </div>
+    </div>
+
     <div class="max-w-7xl mx-auto">
         <!-- Header -->
         <header class="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-6">
@@ -293,6 +315,16 @@
         }
 
         document.addEventListener('DOMContentLoaded', initApp);
+
+        function dismissDisclaimer(event) {
+            if (event && event.target && event.target.id !== 'disclaimerModal') return;
+            const modal = getEl('disclaimerModal');
+            if (modal) {
+                modal.classList.add('opacity-0', 'pointer-events-none');
+                setTimeout(() => modal.classList.add('hidden'), 300);
+            }
+        }
+
 
         async function handleFiles(e) {
             const files = Array.from(e.target.files).filter(f => f.type === 'application/pdf');
