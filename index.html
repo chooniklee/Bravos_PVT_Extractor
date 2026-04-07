@@ -5,6 +5,7 @@
     ========================================================
     UPDATE LOG
     ========================================================
+    - 2026-04-07: (UI TWEAK) Made the "Generate Report" button text dynamic to automatically display the currently active Afterloader SN.
     - 2026-04-07: (UI TWEAK) Updated SN history text styling in PDF report to use solid black text without italics for better readability.
     - 2026-04-07: (GLOBAL EXPORT FIX) Added auto-locale detection to the copy-to-clipboard function. Converts decimal points to commas automatically if the user's OS is set to a European locale, preventing Excel text-parsing errors.
     - 2026-04-07: (PDF REPORT FIX) Compressed SN history layout and reduced chart heights (320px -> 290px) to prevent multi-SN records from causing page overflow. Added Euro-friendly date formatting and SN history tracking.
@@ -101,7 +102,7 @@
                     <input type="file" multiple accept=".pdf" class="hidden" onchange="handleFiles(event)" />
                 </label>
                 <button onclick="generateReport()" class="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50 transition-all shadow-sm font-medium text-[13px]">
-                    <i data-lucide="printer" class="w-4 h-4 text-rose-600"></i> Generate Report
+                    <i data-lucide="printer" class="w-4 h-4 text-rose-600"></i> <span id="reportBtnText">Generate Report</span>
                 </button>
                 <button onclick="copyToClipboard(event)" class="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50 transition-all shadow-sm font-medium text-[13px]">
                     <i data-lucide="copy" class="w-4 h-4 text-indigo-600"></i> Copy to Clipboard
@@ -763,6 +764,20 @@
         }
 
         /**
+         * Updates the Generate Report button text to reflect the currently active Afterloader SN.
+         */
+        function updateReportButtonText() {
+            const btnText = getEl('reportBtnText');
+            if (btnText) {
+                if (activeAfterloader && activeAfterloader !== 'Unknown') {
+                    btnText.innerText = 'Generate Report (SN: ' + activeAfterloader + ')';
+                } else {
+                    btnText.innerText = 'Generate Report';
+                }
+            }
+        }
+
+        /**
          * Master render function handling transitions from empty-state to active UI,
          * sorting logic, and coordinating table/chart updates.
          */
@@ -793,6 +808,7 @@
             const machineData = allResults.filter(r => r.afterloader_sn === activeAfterloader);
             getEl('totalRecordsCount').innerText = machineData.length;
 
+            updateReportButtonText();
             renderTable(machineData);
             renderChart(machineData);
         }
@@ -1048,6 +1064,7 @@
             getEl('emptyState').classList.remove('hidden');
             
             if (chartInstance) chartInstance.destroy();
+            updateReportButtonText();
         }
 
         /**
