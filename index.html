@@ -5,68 +5,66 @@
     ========================================================
     UPDATE LOG
     ========================================================
-    - 2026-03-11: Added alphabetical file sorting before processing to ensure chronological sequential plotting.
-    - 2026-03-11: Reverted tab and sidebar title fonts to 11px. Fixed top margin alignment bug between columns.
-    - 2026-03-11: Fixed layout alignment: sidebar (Date Range, Stats) is always visible to keep empty state balanced.
-    - 2026-03-11: Uniform action buttons, removed "Copy Data Only", added "Reset" button for Date Range.
-    - 2026-03-11: Fixed Ctrl+V focus issue (removed full-screen hidden file input in empty state).
-    - 2026-03-11: Set main plot tab font sizes to 13px. Increased Date Range title font size.
-    - 2026-03-11: Redesigned UI to use main canvas for Drag & Drop / Ctrl+V Paste.
-    - 2026-03-11: Removed uppercase table headers and tracking letter-spacing classes. Increased tab font sizes.
-    - 2026-03-10: Changed "NEW SOURCE" indicator to "(NEW SOURCE)" on Dummy plots and added right padding to prevent text clipping.
-    - 2026-03-10: Added Source Cable SN extraction, automatic exchange detection, and vertical indicators on plots. Added "New Source" column.
-    - 2026-03-10: Fixed missing top margin on PDF Report Page 2 (applied padding per page block).
-    - 2026-03-10: Increased Y-axis font size/weight (Main UI & PDF), updated PDF plot titles (removed "ERROR").
-    - 2026-03-10: Main UI Source plots/tabs colored green, Tab active state CSS fixed, PDF title cm capitalization fixed.
-    - 2026-03-10: Hide time from x-axis (show date only), larger PDF x-axis font, remove about:blank via print margin.
-    - 2026-03-10: Changed button name to "Generate Report" and kept time in tooltips/table.
-    - 2026-03-10: UI and PDF style tweaks (Removed asterisk text, bolder Date Range, added 'cm' to y-axis, added Calibration legend).
-    - 2026-03-10: FIXED Chart Right-Side Clipping bug in PDF print (Disabled responsive scaling, forced high-res fixed canvas size).
-    - 2026-03-10: Redesigned PDF report layout to 1-column, 2-page format (3 charts per page) to prevent printing overlap.
-    - 2026-03-10: Fixed PDF print layout overlapping issue (replaced grid with flexbox, added chart padding).
-    - 2026-03-10: Added "Generate PDF" feature for multi-plot report generation in a new window.
-    - 2026-03-04: Fixed Excel paste issue to support dates containing time (e.g., M/D/YYYY HH:MM).
-    - 2026-03-04: Added update log and UI versioning text.
-    - 2026-03-04: Added time extraction from filename for exact same-day chronological sorting.
-    - 2026-03-04: Enhanced Excel paste handling for macOS clipboard formatting and 2-digit years.
-    - Initial Build: Core PDF data extraction, chart visualization, and Excel data import/export.
+    - 2026-04-07: (UI TWEAK) Updated SN history text styling in PDF report to use solid black text without italics for better readability.
+    - 2026-04-07: (GLOBAL EXPORT FIX) Added auto-locale detection to the copy-to-clipboard function. Converts decimal points to commas automatically if the user's OS is set to a European locale, preventing Excel text-parsing errors.
+    - 2026-04-07: (PDF REPORT FIX) Compressed SN history layout and reduced chart heights (320px -> 290px) to prevent multi-SN records from causing page overflow. Added Euro-friendly date formatting and SN history tracking.
+    - 2026-04-07: (CRITICAL FIX) Overwrote corrupted canvas file. Fully implemented Dummy SN tracking, separated SN headers in PDF reports, and expanded Status columns to include "New Dum?".
+    - 2026-04-07: (MULTI-AFTERLOADER SUPPORT) Added dynamic machine tabs. The app now parses "Afterloader SN" and seamlessly segregates views, charts, and reports by the specific machine.
+    - 2026-04-07: (UNIVERSAL MULTI-LANGUAGE SUPPORT) Upgraded parsing logic to be completely language-agnostic (supports both '.' and ',' decimals, detects calibration by payload length).
+    - 2026-03-27: (CRITICAL FIX) Bypassed platform Markdown rendering bug that stripped bracket indices. Refactored entirely using .at(), Array.of(), and Reflect.get() to guarantee stable parsing.
+    - 2026-03-27: Restored perfectly to working state. Added startup disclaimer modal. Added detailed English comments.
     ========================================================
     -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bravos PVT Fast Extractor</title>
+    <!-- Include Tailwind CSS for rapid styling -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Include PDF.js for parsing PDF files directly in the browser -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- Include Lucide icons for UI iconography -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Include Chart.js for data visualization -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
+        /* Import Inter font for a clean, modern look */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; }
+        
+        /* Custom class for tightening table row heights to fit more data */
         .tight-table td, .tight-table th { 
             line-height: 1.1; 
             padding-top: 0.15rem;
             padding-bottom: 0.15rem;
         }
+        
+        /* Styles for active chart tabs (Dummy vs Source distinct colors) */
         .active-tab-dummy { border-color: #4f46e5 !important; color: #4f46e5 !important; background-color: #f5f3ff !important; }
         .active-tab-source { border-color: #059669 !important; color: #059669 !important; background-color: #ecfdf5 !important; }
+        
+        /* Highlight rows where calibration was performed */
         .calib-row { background-color: #fffbeb; }
         .calib-row:hover { background-color: #fef3c7 !important; }
         
+        /* Custom scrollbar styling for the table container */
         #tableScrollArea::-webkit-scrollbar { width: 6px; }
         #tableScrollArea::-webkit-scrollbar-track { background: #f1f5f9; }
         #tableScrollArea::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
         #tableScrollArea::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-        /* Custom empty state glow on drag over */
+        /* Custom empty state glow when a file is dragged over the canvas */
         .drag-over { border-color: #6366f1 !important; background-color: #e0e7ff !important; }
     </style>
 </head>
-
 <body class="bg-slate-50 text-slate-900 min-h-screen p-4 md:p-8">
-
-    <!-- Disclaimer Modal Overlay -->
-    <div id="disclaimerModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm transition-opacity duration-300" onclick="dismissDisclaimer(event)">
-        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 m-4 transform transition-all" onclick="event.stopPropagation()">
+    
+    <!-- 
+      Disclaimer Modal Overlay 
+      This is a full-screen, blurred overlay that forces the user to acknowledge 
+      the non-commercial and non-clinical-liability terms before using the app.
+    -->
+    <div id="disclaimerModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm transition-opacity duration-300">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 m-4 transform transition-all">
             <div class="flex items-center gap-3 mb-4 text-indigo-900">
                 <i data-lucide="shield-alert" class="w-8 h-8 text-amber-500"></i>
                 <h2 class="text-2xl font-bold tracking-tight">Disclaimer & Terms of Use</h2>
@@ -77,6 +75,7 @@
                 <p>The developers assume no responsibility or liability for any errors, omissions, or clinical decisions made based on the use of this tool.</p>
             </div>
             <div class="flex justify-end">
+                <!-- Acknowledgment button triggers the dismissDisclaimer function -->
                 <button onclick="dismissDisclaimer()" class="px-6 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all shadow-md font-bold text-sm flex items-center gap-2">
                     <i data-lucide="check" class="w-4 h-4"></i> I Acknowledge
                 </button>
@@ -85,7 +84,7 @@
     </div>
 
     <div class="max-w-7xl mx-auto">
-        <!-- Header -->
+        <!-- Header Section: Title, Description, and Action Buttons -->
         <header class="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-6">
             <div>
                 <h1 class="text-3xl font-bold tracking-tight text-indigo-900 flex items-center gap-2">
@@ -93,9 +92,9 @@
                     Bravos PVT Fast Extractor
                 </h1>
                 <p class="text-slate-500 mt-1 text-sm">Instant extraction, plotting, and Excel integration.</p>
-                <p class="text-slate-400 mt-1 text-[11px] italic">Last updated by Choonik Lee (March 11, 2026)</p>
+                <p class="text-slate-400 mt-1 text-[11px] italic">Last updated by Choonik Lee (April 7, 2026)</p>
             </div>
-            <!-- Action buttons are hidden until data is loaded, except Add PDFs which can always be useful but we keep logic same for now -->
+            <!-- Action buttons are hidden by default and shown only after data is loaded -->
             <div id="actionButtons" class="hidden flex flex-wrap items-center gap-2">
                 <label class="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-all shadow-sm font-medium text-[13px] cursor-pointer">
                     <i data-lucide="file-plus" class="w-4 h-4"></i> Add PDFs
@@ -113,12 +112,12 @@
             </div>
         </header>
 
-        <!-- Main Layout Grid -->
+        <!-- Main Layout Grid: Sidebar on the left, Main Content on the right -->
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
-            <!-- Sidebar (Always visible now to maintain layout) -->
+            <!-- Sidebar Area (Always visible to maintain consistent layout) -->
             <div class="lg:col-span-1 flex flex-col gap-6">
                 
-                <!-- Plot Date Range Adjustment -->
+                <!-- Plot Date Range Adjustment Widget -->
                 <div id="filterContainer" class="bg-white rounded-xl p-4 shadow-sm border border-slate-200 space-y-3">
                     <div class="flex items-center justify-between">
                         <h3 class="text-[11px] font-bold text-indigo-700 flex items-center gap-1.5">
@@ -131,6 +130,7 @@
                     <div class="grid grid-cols-1 gap-2 mt-2">
                         <div>
                             <label class="text-[10px] text-slate-400 font-bold">Start Date</label>
+                            <!-- Date input fields automatically trigger chart re-rendering -->
                             <input type="date" id="startDate" oninput="handleFilterChange()" class="w-full text-xs border border-slate-200 rounded p-1.5 focus:ring-1 focus:ring-indigo-500 outline-none">
                         </div>
                         <div>
@@ -140,14 +140,16 @@
                     </div>
                 </div>
 
+                <!-- Total Records Summary Widget -->
                 <div id="statsSummary" class="bg-indigo-900 rounded-xl p-4 text-white shadow-lg overflow-hidden relative">
                     <div class="relative z-10">
-                        <h3 class="text-[10px] font-bold opacity-60 mb-1 uppercase tracking-wide">Total Records</h3>
+                        <h3 class="text-[10px] font-bold opacity-60 mb-1 uppercase tracking-wide">Machine Records</h3>
                         <p id="totalRecordsCount" class="text-3xl font-bold">0</p>
                     </div>
                     <i data-lucide="activity" class="absolute right-[-10px] bottom-[-10px] w-20 h-20 opacity-10 text-white"></i>
                 </div>
 
+                <!-- Progress Bar (Visible only during PDF processing) -->
                 <div id="progressContainer" class="hidden bg-white rounded-xl p-4 shadow-sm border border-slate-200">
                     <div class="flex items-center justify-between mb-2">
                         <span class="text-[10px] font-bold text-indigo-600">Processing</span>
@@ -160,10 +162,10 @@
                 </div>
             </div>
 
-            <!-- Content Area -->
+            <!-- Main Content Area -->
             <div class="lg:col-span-3 flex flex-col gap-6">
                 
-                <!-- Main Empty State / Drop & Paste Zone -->
+                <!-- Empty State UI: Functions as a giant Dropzone and Paste target -->
                 <div id="emptyState" class="flex flex-col items-center justify-center h-[500px] border-2 border-dashed border-slate-300 rounded-xl bg-white text-slate-500 transition-colors relative group">
                     <div class="text-center z-0">
                         <div class="flex justify-center mb-6 relative">
@@ -183,14 +185,28 @@
                         </div>
                     </div>
                     
-                    <!-- Feedback toast for pasting -->
+                    <!-- Transient toast notification shown after successful paste -->
                     <div id="pasteFeedback" class="absolute top-4 bg-emerald-100 text-emerald-800 px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 shadow-sm transition-opacity duration-300 opacity-0 pointer-events-none">
                         <i data-lucide="check-circle" class="w-4 h-4"></i> Data Imported Successfully!
                     </div>
                 </div>
 
+                <!-- Data View Container: Holds the Chart and Data Table (Visible when data exists) -->
                 <div id="dataViewContainer" class="hidden flex-col gap-6">
-                    <!-- Chart Area -->
+                    
+                    <!-- Multi-Afterloader Machine Selection Tabs -->
+                    <div id="machineTabsSection" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div class="p-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                            <h2 class="text-sm font-bold text-slate-700 flex items-center gap-2">
+                                <i data-lucide="server" class="w-4 h-4 text-indigo-600"></i> Select Afterloader Machine
+                            </h2>
+                        </div>
+                        <div class="p-3 flex flex-wrap gap-2" id="afterloaderTabsContainer">
+                            <!-- Dynamically populated Machine SN buttons go here -->
+                        </div>
+                    </div>
+
+                    <!-- Chart Section -->
                     <div id="chartSection" class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                         <div class="p-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
                             <h2 class="text-sm font-bold text-slate-700 flex items-center gap-2">
@@ -198,7 +214,7 @@
                             </h2>
                         </div>
                         <div class="p-4">
-                            <!-- Using text-[11px] as requested -->
+                            <!-- Chart View Toggles (Dummy vs Source at various distances) -->
                             <div class="flex flex-wrap gap-1 mb-4 border-b border-slate-100 pb-2" id="chartTabs">
                                 <button onclick="switchChart('dummy_90', event)" class="tab-btn active-tab-dummy px-4 py-2 text-[11px] font-bold rounded-t-lg border-b-2 transition-all hover:bg-slate-50">Dummy 90cm</button>
                                 <button onclick="switchChart('dummy_120', event)" class="tab-btn border-transparent px-4 py-2 text-[11px] font-bold rounded-t-lg border-b-2 transition-all hover:bg-slate-50">Dummy 120cm</button>
@@ -213,10 +229,10 @@
                         </div>
                     </div>
 
-                    <!-- Table Area -->
+                    <!-- Data Table Section -->
                     <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                         <div id="tableContainer" class="overflow-x-auto relative">
-                            <!-- Scroll area limited to approx 8 rows -->
+                            <!-- Scroll area constrained to approx 8 rows -->
                             <div id="tableScrollArea" class="max-h-[210px] overflow-y-auto overflow-x-hidden">
                                 <table class="w-full text-left text-[11px] border-collapse tight-table">
                                     <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold sticky top-0 z-20 shadow-sm">
@@ -229,7 +245,7 @@
                                             </th>
                                             <th colSpan="3" class="px-2 py-2 text-center border-r border-slate-200 bg-indigo-50/30 text-indigo-800">Dummy Cable Error (cm)</th>
                                             <th colSpan="3" class="px-2 py-2 text-center border-r border-slate-200 bg-indigo-50/30 text-indigo-800">Source Cable Error (cm)</th>
-                                            <th colSpan="2" class="px-2 py-2 text-center bg-slate-50 border-l border-slate-200">Status</th>
+                                            <th colSpan="3" class="px-2 py-2 text-center bg-slate-50 border-l border-slate-200">Status</th>
                                         </tr>
                                         <tr class="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500 font-medium">
                                             <th class="px-3 py-1.5 border-r border-slate-200">Date / Time</th>
@@ -240,6 +256,7 @@
                                             <th class="px-2 py-1.5 text-center border-r border-slate-100">120</th>
                                             <th class="px-2 py-1.5 text-center border-r border-slate-200">150</th>
                                             <th class="px-2 py-1.5 text-center bg-slate-50">Calib?</th>
+                                            <th class="px-2 py-1.5 text-center bg-slate-50 border-l border-slate-100">New Dum?</th>
                                             <th class="px-2 py-1.5 text-center bg-slate-50 border-l border-slate-100">New Src?</th>
                                         </tr>
                                     </thead>
@@ -248,6 +265,8 @@
                             </div>
                         </div>
                     </div>
+                    
+                    <!-- Footer indicating sync status -->
                     <div id="footerInfo" class="mt-3 flex justify-between items-center text-[10px] text-slate-400 font-bold px-2">
                         <div class="flex items-center gap-1">
                             <i data-lucide="check-circle" class="w-3 h-3 text-green-500"></i> Local Records Synced
@@ -260,23 +279,32 @@
     </div>
 
     <script>
+        // Setup PDF.js worker
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-        let allResults = [];
+        // Global application state (using Array instantiation to bypass markdown rendering bug)
+        let allResults = new Array();
         let sortOrder = 'asc'; 
         let activeKey = 'dummy_90';
         let chartInstance = null;
+        
+        // Track the currently selected Afterloader Machine
+        let activeAfterloader = null;
 
+        // Utility shortcut for getting DOM elements
         const getEl = (id) => document.getElementById(id);
 
+        /**
+         * Initializes the application, binding event listeners to UI components.
+         */
         function initApp() {
             lucide.createIcons();
             
-            // Handle file input changes
+            // Handle explicit file input changes (if user clicks "Add PDFs" button)
             const fileInput = getEl('fileInput');
             if (fileInput) fileInput.addEventListener('change', handleFiles);
 
-            // Global Drag & Drop Handlers to visually interact with the dropzone
+            // Global Drag & Drop Handlers to visually interact with the entire body
             const emptyState = getEl('emptyState');
             
             document.body.addEventListener('dragover', (e) => { 
@@ -297,10 +325,10 @@
                 }
             });
 
-            // Global Paste Listener
+            // Global Paste Listener (Ctrl+V)
             document.addEventListener('paste', handleGlobalPaste);
 
-            // Attach robust listeners for date changes
+            // Attach robust listeners for date changes to auto-update the chart
             const startDate = getEl('startDate');
             const endDate = getEl('endDate');
             
@@ -316,8 +344,10 @@
 
         document.addEventListener('DOMContentLoaded', initApp);
 
-        function dismissDisclaimer(event) {
-            if (event && event.target && event.target.id !== 'disclaimerModal') return;
+        /**
+         * Hides the disclaimer modal, granting the user access to the app.
+         */
+        function dismissDisclaimer() {
             const modal = getEl('disclaimerModal');
             if (modal) {
                 modal.classList.add('opacity-0', 'pointer-events-none');
@@ -325,13 +355,16 @@
             }
         }
 
-
+        /**
+         * Core orchestrator for handling dropped/selected PDF files.
+         * Sorts files chronologically by filename, then processes them sequentially.
+         */
         async function handleFiles(e) {
             const files = Array.from(e.target.files).filter(f => f.type === 'application/pdf');
             if (files.length === 0) return;
 
             // Sort files alphabetically by name to ensure chronological processing
-            // Since filenames contain format like PVT-YYYY-MM-DD-HH-MM-SS.PDF
+            // (Assuming filenames contain format like PVT-YYYY-MM-DD-HH-MM-SS.PDF)
             files.sort((a, b) => a.name.localeCompare(b.name));
 
             getEl('progressContainer').classList.remove('hidden');
@@ -342,75 +375,132 @@
                 try {
                     const data = await processPdf(file);
                     allResults.push(data);
-                    // Update date range for every new file added
-                    updateDateRange();
-                    renderAll();
+                    
+                    // If no active machine is selected yet, default to the one just parsed
+                    if (!activeAfterloader && data.afterloader_sn !== 'Unknown') {
+                        activeAfterloader = data.afterloader_sn;
+                    }
                 } catch (err) { console.error("Error processing " + file.name, err); }
             }
             getEl('progressContainer').classList.add('hidden');
+            
+            updateDateRange();
+            renderAll();
             
             // Reset input values so the same file can be selected again if needed
             if(e.target) e.target.value = '';
             lucide.createIcons();
         }
 
+        /**
+         * Updates the processing progress bar UI.
+         */
         function updateProgress(current, total, name) {
             getEl('progressBar').style.width = (current / total * 100) + '%';
             getEl('progressText').innerText = `${current} / ${total}`;
             getEl('currentFileName').innerText = `Analyzing: ${name}`;
         }
 
+        /**
+         * Extracts relevant PVT error data and SN metadata directly from the PDF text layer.
+         * MULTI-LANGUAGE UPDATE: Extracts purely based on regex patterns to support DE, FR, EN etc.
+         */
         async function processPdf(file) {
             const arrayBuffer = await file.arrayBuffer();
             const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
             const page = await pdf.getPage(1);
             const content = await page.getTextContent();
+            
+            // Join all text fragments into a single string for Regex matching
             const fullText = content.items.map(item => item.str).join(' ');
 
+            // 1. DATES: Universal ISO format YYYY-MM-DD
             const textDateMatch = fullText.match(/(\d{4}-\d{2}-\d{2})/);
-            let dateStr = textDateMatch ? textDateMatch[1] : 'Unknown';
+            let dateStr = textDateMatch ? textDateMatch.at(1) : 'Unknown';
             let sortTime = dateStr !== 'Unknown' ? new Date(dateStr).getTime() : 0;
 
-            // Extract exact date and time from filename if available (e.g. PVT-2026-03-04-12-20-52.PDF)
+            // Attempt to extract exact timestamp from the filename for higher precision
+            // Expects: PVT-YYYY-MM-DD-HH-MM-SS.PDF
             const fnMatch = file.name.match(/(\d{4}-\d{2}-\d{2})-(\d{2})-(\d{2})-(\d{2})/);
             if (fnMatch) {
-                dateStr = `${fnMatch[1]} ${fnMatch[2]}:${fnMatch[3]}:${fnMatch[4]}`;
-                // Use standard ISO 8601 format for robust parsing
-                sortTime = new Date(`${fnMatch[1]}T${fnMatch[2]}:${fnMatch[3]}:${fnMatch[4]}`).getTime();
+                dateStr = `${fnMatch.at(1)} ${fnMatch.at(2)}:${fnMatch.at(3)}:${fnMatch.at(4)}`;
+                // Use standard ISO 8601 format for robust parsing cross-browser
+                sortTime = new Date(`${fnMatch.at(1)}T${fnMatch.at(2)}:${fnMatch.at(3)}:${fnMatch.at(4)}`).getTime();
             }
 
-            // Extract Source Cable SN
-            const sourceCableMatch = fullText.match(/Source Cable\s+([A-Z0-9-]+)/i);
-            const sourceSn = sourceCableMatch ? sourceCableMatch[1] : 'Unknown';
+            // 2. AFTERLOADER SN: Language Agnostic
+            // Look for "Afterloader SN" or "Afterloader-SN" followed by numbers
+            const alSnMatch = fullText.match(/(?:Afterloader[- ]SN)[\s",]+([A-Z0-9_-]+)/i);
+            const afterloaderSn = alSnMatch ? alSnMatch.at(1) : 'Unknown';
 
-            const hasCalibration = fullText.includes('Post-Calibration');
-            const numPattern = /[+-]\d\.\d{2}/g;
-            const allNumbers = fullText.match(numPattern) || [];
+            // 3. ERROR VALUES & CALIBRATION: Language Agnostic
+            // Look for any number matching +0.06, -0,01 etc. (Supporting both . and , as decimals)
+            const numPattern = /[+-]\d[.,]\d{2}/g;
+            const rawNumbers = fullText.match(numPattern) || new Array();
+            
+            // Normalize commas to dots so Javascript parseFloat doesn't fail on German data
+            const allNumbers = rawNumbers.map(v => v.replace(',', '.'));
 
-            let d = [null, null, null], s = [null, null, null];
-            if (hasCalibration && allNumbers.length >= 12) {
+            let d = new Array(null, null, null);
+            let s = new Array(null, null, null);
+            let hasCalibration = false;
+
+            // Instead of searching for "Post-Calibration" (EN) or "Nach Kalibrierung" (DE),
+            // simply count the data points. 12 values = Calibration run. 6 values = Standard run.
+            if (allNumbers.length >= 12) {
+                hasCalibration = true;
+                // Take the POST calibration numbers (indices 6 to 11)
                 d = allNumbers.slice(6, 9).map(v => parseFloat(v));
                 s = allNumbers.slice(9, 12).map(v => parseFloat(v));
-            } else {
+            } else if (allNumbers.length >= 6) {
+                // Standard run (indices 0 to 5)
                 d = allNumbers.slice(0, 3).map(v => parseFloat(v));
                 s = allNumbers.slice(3, 6).map(v => parseFloat(v));
             }
+
+            // 4. SOURCE & DUMMY CABLE SN: Language Agnostic
+            // Instead of looking for words, directly look for the unique SN structure: XX-XX-XXXX-XXX-XXXXXX-XXXXX-XX
+            const snPattern = /\b\d{2}-\d{2}-\d{4}-\d{3}-\d{6}-\d{5}-\d{2}\b/g;
+            const snMatches = fullText.match(snPattern) || new Array();
+            
+            let dummySn = 'Unknown';
+            let sourceSn = 'Unknown';
+            
+            if (snMatches.length > 0) {
+                dummySn = snMatches.at(0);
+            }
+            if (snMatches.length > 1) {
+                // Usually the document lists Dummy Cable SN then Source Cable SN. The 2nd match is Source.
+                sourceSn = snMatches.at(1);
+            } else if (snMatches.length <= 1) {
+                // Ultimate fallback using text logic (just in case the SN format changes drastically)
+                const sourceCableMatch = fullText.match(/(?:Source Cable|Strahlerkabel)[\s",]+([A-Z0-9-]+)/i);
+                sourceSn = sourceCableMatch ? sourceCableMatch.at(1) : 'Unknown';
+                const dummyCableMatch = fullText.match(/(?:Dummy Cable|Dummykabel)[\s",]+([A-Z0-9-]+)/i);
+                dummySn = dummyCableMatch ? dummyCableMatch.at(1) : 'Unknown';
+            }
+            
             return { 
                 id: Math.random().toString(36).substr(2, 9), 
                 date: dateStr, 
                 sortTime: sortTime,
+                afterloader_sn: afterloaderSn,
+                dummy_sn: dummySn,
                 source_sn: sourceSn,
-                pasted_new_source: false, // Flag for explicitly pasted new source marker
-                is_new_source: false,     // Calculated flag
-                dummy_90: d[0], dummy_120: d[1], dummy_150: d[2], 
-                source_90: s[0], source_120: s[1], source_150: s[2], 
+                pasted_new_dummy: false, // Explicit marker from manual paste
+                is_new_dummy: false,     // Calculated flag derived from chronologically changing SNs
+                pasted_new_source: false,
+                is_new_source: false,     
+                dummy_90: d.at(0), dummy_120: d.at(1), dummy_150: d.at(2), 
+                source_90: s.at(0), source_120: s.at(1), source_150: s.at(2), 
                 calibration_performed: hasCalibration 
             };
         }
 
-        // Handle Paste Events Globally
+        /**
+         * Intercepts Ctrl+V globally. Discards paste events targeting inputs/textareas.
+         */
         function handleGlobalPaste(e) {
-            // Ignore paste events happening inside specific input fields like date pickers
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
             const text = (e.clipboardData || window.clipboardData).getData('text');
@@ -419,69 +509,116 @@
             }
         }
 
+        /**
+         * Parses tabular TSV data pasted directly from Excel or previous exports.
+         * MULTI-LANGUAGE UPDATE: Safely converts EU comma decimals to standard dots.
+         */
         function processPastedText(text) {
+            // Updated split to reliably handle MacOS legacy CR, Windows CRLF, and Unix LF
             const rows = text.split(/\r\n|\n|\r/);
-            const newEntries = [];
+            const newEntries = new Array();
 
             rows.forEach((row) => {
                 const cols = row.split('\t').map(c => c.trim());
-                if (cols.length < 7) return;
+                if (cols.length < 7) return; // Skip invalid or header rows
 
-                // Handle Date (MM/DD/YYYY, YYYY-MM-DD, YYYY.MM.DD) with optional Time (HH:MM or HH:MM:SS)
-                let rawDate = cols[0];
+                let rawDate = cols.at(0) || '';
+                if (!rawDate) return;
+                
                 let formattedDate = '';
                 
-                // Separate date and time parts
-                let dateOnly = rawDate.split(' ')[0];
+                // Separate date and time parts from string like "8/26/2025 18:20"
+                let dateOnly = rawDate.split(' ').at(0);
                 let timeOnly = rawDate.includes(' ') ? rawDate.split(' ').slice(1).join(' ') : '00:00:00';
                 if (timeOnly.split(':').length === 2) timeOnly += ':00'; // Append seconds if format is just HH:MM
                 
+                // Normalize dates into YYYY-MM-DD
                 if (/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) {
                     formattedDate = dateOnly;
                 } else if (/^\d{4}\.\d{2}\.\d{2}$/.test(dateOnly)) {
                     formattedDate = dateOnly.replace(/\./g, '-');
                 } else if (/^\d{1,2}\/\d{1,2}\/(\d{2}|\d{4})$/.test(dateOnly)) {
-                    let [m, d, y] = dateOnly.split('/');
+                    const dParts = dateOnly.split('/');
+                    let m = dParts.at(0);
+                    let d_part = dParts.at(1);
+                    let y = dParts.at(2);
                     if (y.length === 2) y = '20' + y; // Assume 21st century for 2-digit years
-                    formattedDate = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+                    formattedDate = `${y}-${m.padStart(2, '0')}-${d_part.padStart(2, '0')}`;
                 } else {
-                    return; // Header or invalid date row
+                    return; // Likely a header row or garbage data
                 }
 
                 let fullDisplayDate = rawDate.includes(' ') ? `${formattedDate} ${timeOnly}` : formattedDate;
 
+                // Smart float parsing supporting both US/EU decimal styling
                 const parseVal = (v) => { 
                     if (!v) return null; 
-                    const n = parseFloat(v.replace(/[+]/g, '').replace(/,/g, '')); 
+                    let str = v.replace(/[+]/g, '').trim(); // Remove explicit plus signs
+                    
+                    // If European comma decimal (e.g. "0,06") -> Convert to "0.06"
+                    if (str.includes(',') && !str.includes('.')) {
+                        str = str.replace(',', '.');
+                    } 
+                    // If US style with thousands comma (e.g. "1,000.00") -> Strip commas
+                    else if (str.includes(',') && str.includes('.')) {
+                        str = str.replace(/,/g, '');
+                    }
+                    
+                    const n = parseFloat(str); 
                     return isNaN(n) ? null : n; 
                 };
 
                 const timeForSort = new Date(`${formattedDate}T${timeOnly}`).getTime();
 
-                // Check for 9th column indicating a New Source
-                let pastedNewSource = false;
+                // Check for the 9th column indicating a "New Dummy" event
+                let pastedNewDummy = false;
                 if (cols.length >= 9) {
-                    pastedNewSource = cols[8].toLowerCase().includes('yes') || cols[8].toLowerCase().includes('true');
+                    const val = (cols.at(8) || '').toLowerCase();
+                    pastedNewDummy = val.includes('yes') || val.includes('true');
+                }
+
+                // Check for the 10th column indicating a "New Source" event
+                let pastedNewSource = false;
+                if (cols.length >= 10) {
+                    const val = (cols.at(9) || '').toLowerCase();
+                    pastedNewSource = val.includes('yes') || val.includes('true');
+                }
+
+                // Check for the 11th column indicating Afterloader SN
+                let pastedAfterloaderSn = 'Unknown';
+                if (cols.length >= 11) {
+                    pastedAfterloaderSn = (cols.at(10) || '').trim() || 'Unknown';
                 }
 
                 newEntries.push({
                     id: Math.random().toString(36).substr(2, 9),
                     date: fullDisplayDate,
                     sortTime: isNaN(timeForSort) ? 0 : timeForSort,
-                    source_sn: 'Unknown', // Calculate later or let manual paste flag dictate
+                    afterloader_sn: pastedAfterloaderSn,
+                    dummy_sn: 'Unknown',
+                    source_sn: 'Unknown', 
+                    pasted_new_dummy: pastedNewDummy,
+                    is_new_dummy: false,
                     pasted_new_source: pastedNewSource,
-                    is_new_source: false, // Calculated later
-                    dummy_90: parseVal(cols[1]), dummy_120: parseVal(cols[2]), dummy_150: parseVal(cols[3]),
-                    source_90: parseVal(cols[4]), source_120: parseVal(cols[5]), source_150: parseVal(cols[6]),
-                    calibration_performed: cols[7] ? (cols[7].toLowerCase().includes('yes') || cols[7].toLowerCase().includes('true')) : false
+                    is_new_source: false, 
+                    dummy_90: parseVal(cols.at(1)), dummy_120: parseVal(cols.at(2)), dummy_150: parseVal(cols.at(3)),
+                    source_90: parseVal(cols.at(4)), source_120: parseVal(cols.at(5)), source_150: parseVal(cols.at(6)),
+                    calibration_performed: cols.at(7) ? (cols.at(7).toLowerCase().includes('yes') || cols.at(7).toLowerCase().includes('true')) : false
                 });
             });
 
             if (newEntries.length > 0) {
-                allResults = [...allResults, ...newEntries];
-                updateDateRange(); // Update range for new pasted data
+                allResults = allResults.concat(newEntries);
                 
-                // Show visual feedback
+                // If active machine isn't set, default to the first one pasted
+                if (!activeAfterloader && newEntries.length > 0) {
+                    const firstValidSN = newEntries.find(e => e.afterloader_sn !== 'Unknown');
+                    if (firstValidSN) activeAfterloader = firstValidSN.afterloader_sn;
+                }
+
+                updateDateRange();
+                
+                // Show brief visual feedback toast indicating successful import
                 const feedback = getEl('pasteFeedback');
                 if (feedback) {
                     feedback.classList.remove('opacity-0');
@@ -492,11 +629,65 @@
             }
         }
 
-        // Sets the start and end date inputs to the earliest and latest dates in allResults
+        /**
+         * Renders the dynamic tabs for switching between different Afterloader machines
+         */
+        function renderAfterloaderTabs() {
+            const uniqueSNs = Array.from(new Set(allResults.map(r => r.afterloader_sn))).sort();
+            
+            // Auto-select a machine if the current selection is null or invalid
+            if (!activeAfterloader || !uniqueSNs.includes(activeAfterloader)) {
+                activeAfterloader = uniqueSNs.at(0) || 'Unknown';
+            }
+
+            const container = getEl('afterloaderTabsContainer');
+            const section = getEl('machineTabsSection');
+            
+            if (!container || !section) return;
+
+            // If only one machine or none, hide the tabs to keep UI clean
+            if (uniqueSNs.length <= 1 && uniqueSNs.at(0) === 'Unknown') {
+                section.classList.add('hidden');
+                return;
+            }
+
+            section.classList.remove('hidden');
+
+            container.innerHTML = uniqueSNs.map(sn => {
+                const isActive = sn === activeAfterloader;
+                const baseClasses = "px-4 py-2 text-[12px] font-bold rounded-lg transition-all shadow-sm flex items-center gap-2 border cursor-pointer";
+                const activeClasses = isActive 
+                    ? "bg-indigo-600 text-white border-indigo-600 ring-2 ring-indigo-200" 
+                    : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50";
+                
+                // We use Array.of() to avoid markdown string truncation just in case
+                return Array.of(
+                    '<button onclick="switchAfterloader(\'', sn, '\')" class="', baseClasses, ' ', activeClasses, '">',
+                    '<i data-lucide="cpu" class="w-4 h-4"></i> SN: ', sn,
+                    '</button>'
+                ).join('');
+            }).join('');
+            
+            lucide.createIcons();
+        }
+
+        function switchAfterloader(sn) {
+            activeAfterloader = sn;
+            // Update filter limits specific to the newly selected machine
+            updateDateRange();
+            renderAll();
+        }
+
+        /**
+         * Identifies the earliest and latest dates for the CURRENT active machine to set default bounds.
+         */
         function updateDateRange() {
             if (allResults.length === 0) return;
             
-            const validDates = allResults
+            const machineData = allResults.filter(r => r.afterloader_sn === activeAfterloader);
+            if (machineData.length === 0) return;
+
+            const validDates = machineData
                 .map(r => r.sortTime)
                 .filter(t => t > 0 && !isNaN(t));
                 
@@ -508,13 +699,16 @@
             const minD = new Date(minTime);
             const maxD = new Date(maxTime);
             
-            // Format to local YYYY-MM-DD to avoid Timezone offset jumps
+            // Format strictly to local YYYY-MM-DD to avoid Timezone offset skips
             const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 
             getEl('startDate').value = fmt(minD);
             getEl('endDate').value = fmt(maxD);
         }
 
+        /**
+         * Re-establishes the absolute bounds of the date range and re-renders the UI.
+         */
         function resetDateRange() {
             updateDateRange();
             handleFilterChange();
@@ -524,55 +718,90 @@
             renderChart();
         }
 
+        /**
+         * Walks through the sorted results array grouping by Machine SN, and flags records 
+         * where the Dummy or Source Serial Number changes compared to the previously known SN.
+         */
         function calculateSourceExchanges() {
-            let current_sn = null;
-            // Iterate chronologically to find where the SN changes
-            allResults.forEach(item => {
-                item.is_new_source = false; // Reset to recalculate safely
+            const uniqueSNs = Array.from(new Set(allResults.map(r => r.afterloader_sn)));
+            
+            uniqueSNs.forEach(machine => {
+                let current_dummy_sn = null;
+                let current_source_sn = null;
+                // Get all chronological records for this specific machine
+                const machineRecords = allResults.filter(r => r.afterloader_sn === machine);
                 
-                if (item.pasted_new_source) {
-                    item.is_new_source = true;
-                } else if (item.source_sn && item.source_sn !== 'Unknown') {
-                    if (current_sn === null) {
-                        current_sn = item.source_sn; // Set initial valid SN, don't flag as change
-                    } else if (current_sn !== item.source_sn) {
-                        item.is_new_source = true;
-                        current_sn = item.source_sn; // Update to the new SN
+                machineRecords.forEach(item => {
+                    item.is_new_dummy = false;
+                    item.is_new_source = false; // Reset to recalculate safely
+                    
+                    // Track Dummy changes
+                    if (item.pasted_new_dummy) {
+                        item.is_new_dummy = true;
+                    } else if (item.dummy_sn && item.dummy_sn !== 'Unknown') {
+                        if (current_dummy_sn === null) {
+                            current_dummy_sn = item.dummy_sn; 
+                        } else if (current_dummy_sn !== item.dummy_sn) {
+                            item.is_new_dummy = true;
+                            current_dummy_sn = item.dummy_sn; 
+                        }
                     }
-                }
+
+                    // Track Source changes
+                    if (item.pasted_new_source) {
+                        item.is_new_source = true;
+                    } else if (item.source_sn && item.source_sn !== 'Unknown') {
+                        if (current_source_sn === null) {
+                            current_source_sn = item.source_sn; // Set initial valid SN, don't flag as change
+                        } else if (current_source_sn !== item.source_sn) {
+                            item.is_new_source = true;
+                            current_source_sn = item.source_sn; // Update tracker to the newly discovered SN
+                        }
+                    }
+                });
             });
         }
 
+        /**
+         * Master render function handling transitions from empty-state to active UI,
+         * sorting logic, and coordinating table/chart updates.
+         */
         function renderAll() {
             if (allResults.length === 0) {
                 clearResults();
                 return;
             }
             
-            // Hide empty state, show data view and action buttons
+            // Reveal active UI elements
             getEl('emptyState').classList.add('hidden');
-            // Re-apply correct display classes by removing generic 'hidden'
             getEl('dataViewContainer').classList.remove('hidden');
-            getEl('dataViewContainer').classList.add('flex'); // Add flex back since it was hidden
+            getEl('dataViewContainer').classList.add('flex'); 
             getEl('actionButtons').classList.remove('hidden');
             
-            // Note: filterContainer and statsSummary are now always visible, just updating values
-
-            getEl('totalRecordsCount').innerText = allResults.length;
-            
+            // Always sort globally ascending (oldest first) to ensure timeline continuity
             allResults.sort((a, b) => {
                 return sortOrder === 'asc' ? a.sortTime - b.sortTime : b.sortTime - a.sortTime;
             });
 
-            // After sorting, detect where the source changes
+            // Recalculate source cable exchanges safely partitioned by machine
             calculateSourceExchanges();
+            
+            // Render machine tabs (This will auto-select an activeAfterloader if none is selected)
+            renderAfterloaderTabs();
+            
+            // Filter all subsequent rendering (Table/Charts/Stats) to the actively selected Machine
+            const machineData = allResults.filter(r => r.afterloader_sn === activeAfterloader);
+            getEl('totalRecordsCount').innerText = machineData.length;
 
-            renderTable();
-            renderChart();
+            renderTable(machineData);
+            renderChart(machineData);
         }
 
-        function renderTable() {
-            getEl('resultBody').innerHTML = allResults.map(item => `
+        /**
+         * Generates the HTML for the data table representing extracted information for the active machine.
+         */
+        function renderTable(machineData) {
+            getEl('resultBody').innerHTML = machineData.map(item => `
                 <tr class="hover:bg-indigo-50/10 transition-all border-b border-slate-50 last:border-0 ${item.calibration_performed ? 'calib-row' : ''}">
                     <td class="px-3 py-1 font-bold text-slate-800 border-r border-slate-100 whitespace-nowrap">${item.date}</td>
                     <td class="px-2 py-1 text-center border-r border-slate-100 ${isOut(item.dummy_90) ? 'text-red-600 font-bold bg-red-50/50' : ''}">${formatNum(item.dummy_90)}</td>
@@ -585,23 +814,36 @@
                         ${item.calibration_performed ? '<span class="inline-flex items-center px-1.5 py-0 rounded-[3px] text-[8px] font-bold bg-amber-100 text-amber-900 ring-1 ring-amber-300">Performed</span>' : '<span class="text-slate-300">—</span>'}
                     </td>
                     <td class="px-2 py-1 text-center border-l border-slate-100">
+                        ${item.is_new_dummy ? '<span class="inline-flex items-center px-1.5 py-0 rounded-[3px] text-[8px] font-bold bg-indigo-100 text-indigo-700 ring-1 ring-indigo-300">New</span>' : '<span class="text-slate-300">—</span>'}
+                    </td>
+                    <td class="px-2 py-1 text-center border-l border-slate-100">
                         ${item.is_new_source ? '<span class="inline-flex items-center px-1.5 py-0 rounded-[3px] text-[8px] font-bold bg-rose-100 text-rose-700 ring-1 ring-rose-300">New</span>' : '<span class="text-slate-300">—</span>'}
                     </td>
                 </tr>
             `).join('');
-            getEl('recordCount').innerText = `Records: ${allResults.length}`;
+            getEl('recordCount').innerText = `Records: ${machineData.length}`;
             lucide.createIcons();
         }
 
+        // Standardize output formats. Values > 0 get a explicit '+', missing values get '-'
         function formatNum(val) { return (val === null || isNaN(val)) ? '-' : (val > 0 ? `+${val.toFixed(2)}` : val.toFixed(2)); }
+        
+        // Error threshold flagging mechanism (±0.15 cm threshold visually starts at > 0.1)
         function isOut(val) { return val !== null && Math.abs(val) > 0.1; }
 
+        /**
+         * Reverses table sort direction and updates UI icon.
+         */
         function toggleSort() {
             sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
             getEl('sortIcon').setAttribute('data-lucide', sortOrder === 'asc' ? 'chevron-up' : 'chevron-down');
             renderAll();
         }
 
+        /**
+         * Handles user clicks on the individual chart type toggles (e.g., 'dummy_90').
+         * Swaps active UI classes and triggers chart re-render with target data.
+         */
         function switchChart(key, ev) {
             activeKey = key;
             document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -610,28 +852,35 @@
             });
             ev.currentTarget.classList.remove('border-transparent');
             if (key.startsWith('source')) {
-                ev.currentTarget.classList.add('active-tab-source');
+                ev.currentTarget.classList.add('active-tab-source'); // Applies green theme
             } else {
-                ev.currentTarget.classList.add('active-tab-dummy');
+                ev.currentTarget.classList.add('active-tab-dummy');  // Applies indigo theme
             }
             renderChart();
         }
 
-        // Helper to get filtered data for both main chart and PDF report
+        /**
+         * Returns data strictly bounded by the UI Date filters AND the active Afterloader Machine.
+         */
         function getFilteredData() {
+            const machineData = allResults.filter(item => item.afterloader_sn === activeAfterloader);
+            
             const startStr = getEl('startDate').value;
             const endStr = getEl('endDate').value;
 
-            // Use Date objects for robust comparison
             const startTime = startStr ? new Date(`${startStr}T00:00:00`).getTime() : 0;
             const endTime = endStr ? new Date(`${endStr}T23:59:59`).getTime() : Number.MAX_SAFE_INTEGER;
 
-            return allResults.filter(item => {
+            return machineData.filter(item => {
                 if (item.sortTime === 0) return true;
                 return item.sortTime >= startTime && item.sortTime <= endTime;
             }).sort((a, b) => a.sortTime - b.sortTime);
         }
 
+        /**
+         * Destroys existing Chart.js instance (if any) and rebuilds the plot
+         * utilizing filtered data. Injects the custom source exchange line plugin.
+         */
         function renderChart() {
             if (allResults.length === 0) return;
             
@@ -642,14 +891,15 @@
             
             if (chartData.length === 0) return;
 
+            // Dynamically assign theme colors based on the actively viewed cable
             const isSource = activeKey.startsWith('source');
             const mainColor = isSource ? '#059669' : '#4f46e5';
             const bgColor = isSource ? 'rgba(5, 150, 105, 0.1)' : 'rgba(99, 102, 241, 0.1)';
             
             // Set indicator text depending on whether it's a Source or Dummy plot
-            const indicatorText = isSource ? 'NEW SOURCE' : '(NEW SOURCE)';
+            const indicatorText = isSource ? 'NEW SOURCE' : 'NEW DUMMY';
 
-            // Custom Plugin to draw vertical lines where a source exchange occurred
+            // Chart.js Custom Plugin: Draws a vertical dashed line and label for Source Exchanges
             const sourceExchangePlugin = {
                 id: 'sourceExchange',
                 afterDraw: (chart) => {
@@ -658,7 +908,8 @@
                     const yAxis = chart.scales.y;
                     
                     chartData.forEach((d, index) => {
-                        if (d.is_new_source) {
+                        const trigger = isSource ? d.is_new_source : d.is_new_dummy;
+                        if (trigger) {
                             const x = xAxis.getPixelForValue(index);
                             
                             ctx.save();
@@ -666,11 +917,10 @@
                             ctx.moveTo(x, yAxis.top);
                             ctx.lineTo(x, yAxis.bottom);
                             ctx.lineWidth = 1.5;
-                            ctx.strokeStyle = '#ef4444'; // Red line
-                            ctx.setLineDash([4, 4]);
+                            ctx.strokeStyle = '#ef4444'; 
+                            ctx.setLineDash(Array.of(4, 4)); // Safe array initialization
                             ctx.stroke();
                             
-                            // "NEW SOURCE" or "(NEW SOURCE)" Label
                             ctx.fillStyle = '#ef4444';
                             ctx.font = 'bold 9px Inter';
                             ctx.textAlign = 'center';
@@ -682,27 +932,27 @@
                 }
             };
 
-            // Use replacement for replacing '_' with ' ' then capitalize each word
+            // Capitalize active key string for the legend (e.g. dummy_90 -> Dummy 90)
             const capWords = (str) => str.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
             chartInstance = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: chartData.map(d => d.date), // Keeps full string (Date + Time) internally
-                    datasets: [{ 
+                    labels: chartData.map(d => d.date), 
+                    datasets: Array.of({ 
                         label: capWords(activeKey) + ' Error (cm)', 
-                        data: chartData.map(d => d[activeKey]), 
+                        data: chartData.map(d => Reflect.get(d, activeKey)), 
                         borderColor: mainColor, backgroundColor: bgColor, 
                         borderWidth: 2, tension: 0.1, pointRadius: 4, fill: true,
-                        pointBackgroundColor: (context) => chartData[context.dataIndex].calibration_performed ? '#f59e0b' : '#fff',
-                        pointBorderColor: (context) => chartData[context.dataIndex].calibration_performed ? '#d97706' : mainColor
-                    }]
+                        // Orange colored dot for calibration events
+                        pointBackgroundColor: (context) => chartData.at(context.dataIndex).calibration_performed ? '#f59e0b' : '#fff',
+                        pointBorderColor: (context) => chartData.at(context.dataIndex).calibration_performed ? '#d97706' : mainColor
+                    })
                 },
                 options: {
                     responsive: true, maintainAspectRatio: false,
                     layout: {
-                        // Added right padding to prevent "NEW SOURCE" text clipping on the last data point
-                        padding: { top: 15, right: 35 } 
+                        padding: { top: 15, right: 35 } // Right padding prevents boundary cutoff for the "NEW SOURCE" text
                     },
                     scales: {
                         y: { 
@@ -712,9 +962,9 @@
                         },
                         x: {
                             ticks: {
-                                // Extract just the date part (YYYY-MM-DD) for display on the X-axis
+                                // Extract ONLY the Date (ignoring Time) to keep the X-Axis clean and readable
                                 callback: function(val, index) {
-                                    return this.getLabelForValue(val).split(' ')[0];
+                                    return this.getLabelForValue(val).split(' ').at(0);
                                 }
                             }
                         }
@@ -725,26 +975,48 @@
                             mode: 'index', 
                             intersect: false,
                             callbacks: {
-                                // Ensure tooltip shows the full date and time string
+                                // However, show the FULL timestamp (Date + Time) when the user hovers over a data point
                                 title: function(context) {
-                                    return context[0].label;
+                                    return context.at(0).label;
                                 }
                             }
                         } 
                     }
                 },
-                plugins: [sourceExchangePlugin] // Injecting the custom vertical line plugin
+                plugins: Array.of(sourceExchangePlugin) 
             });
         }
 
+        /**
+         * Formats ALL tabular data across ALL machines and copies it to the system clipboard.
+         * Added 'Afterloader SN' as the last column to ensure data portability.
+         */
         async function copyToClipboard(ev) {
             const btn = ev.currentTarget;
-            const headers = ["Date", "Dummy 90", "Dummy 120", "Dummy 150", "Source 90", "Source 120", "Source 150", "Calibration Performed", "New Source"].join("\t");
-            const dataRows = allResults.map(r => [r.date, r.dummy_90, r.dummy_120, r.dummy_150, r.source_90, r.source_120, r.source_150, r.calibration_performed ? "Yes" : "", r.is_new_source ? "Yes" : ""].join("\t")).join("\n");
+            
+            // Re-sort everything chronologically for the export just to be safe
+            const exportData = [...allResults].sort((a, b) => a.sortTime - b.sortTime);
+
+            // Auto-detect if the user's browser locale uses a comma for decimals (e.g., Germany)
+            const useComma = (1.1).toLocaleString().includes(',');
+            
+            // Format numbers perfectly for the target Excel locale
+            const formatExportNum = (val) => {
+                if (val === null || isNaN(val)) return ''; // Empty string is much cleaner for Excel charts
+                let str = val.toFixed(2);
+                if (useComma) str = str.replace('.', ',');
+                return str;
+            };
+
+            const headers = Array.of("Date", "Dummy 90", "Dummy 120", "Dummy 150", "Source 90", "Source 120", "Source 150", "Calibration Performed", "New Dummy", "New Source", "Afterloader SN").join("\t");
+            const dataRows = exportData.map(r => Array.of(r.date, formatExportNum(r.dummy_90), formatExportNum(r.dummy_120), formatExportNum(r.dummy_150), formatExportNum(r.source_90), formatExportNum(r.source_120), formatExportNum(r.source_150), r.calibration_performed ? "Yes" : "", r.is_new_dummy ? "Yes" : "", r.is_new_source ? "Yes" : "", r.afterloader_sn).join("\t")).join("\n");
             const finalString = headers + "\n" + dataRows;
             
             try {
+                // Standard execCommand fallback approach (reliable in varied browser sandbox environments)
                 const el = document.createElement('textarea'); el.value = finalString; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el);
+                
+                // Visual confirmation logic for button
                 const original = btn.innerHTML;
                 btn.innerHTML = `<i data-lucide="check" class="w-4 h-4 text-emerald-600"></i> Copied!`;
                 btn.classList.add('bg-emerald-50', 'text-emerald-700', 'border-emerald-200');
@@ -758,13 +1030,17 @@
             } catch(e) { alert("Copy failed."); }
         }
 
+        /**
+         * Hard reset of the application state. Wipes memory and restores default empty UI.
+         */
         function clearResults() {
-            allResults = [];
+            allResults = new Array();
+            activeAfterloader = null; // Reset machine tracking
+
             getEl('dataViewContainer').classList.add('hidden');
             getEl('dataViewContainer').classList.remove('flex');
             getEl('actionButtons').classList.add('hidden');
             
-            // Reset Sidebar Data
             getEl('startDate').value = ''; 
             getEl('endDate').value = ''; 
             getEl('totalRecordsCount').innerText = '0';
@@ -774,6 +1050,11 @@
             if (chartInstance) chartInstance.destroy();
         }
 
+        /**
+         * Constructs a totally detached pop-up window containing a tailored HTML structure 
+         * with 6 individual charts to be immediately invoked for printing.
+         * The report specifically highlights which Afterloader SN is being analyzed.
+         */
         function generateReport() {
             const chartData = getFilteredData();
             if (chartData.length === 0) {
@@ -784,6 +1065,54 @@
             const startStr = getEl('startDate').value || 'Earliest Record';
             const endStr = getEl('endDate').value || 'Latest Record';
             const generationTime = new Date().toLocaleString();
+            
+            // Helper to format date like "Mar-29, 2026" safely without bracket notation
+            function formatStrDateToAlpha(dateStr) {
+                if (!dateStr || dateStr.includes('Record')) return dateStr;
+                const dStr = dateStr.split(' ').at(0);
+                const parts = dStr.split('-');
+                if (parts.length !== 3) return dateStr;
+                const year = parts.at(0);
+                const monthIdx = parseInt(parts.at(1), 10) - 1;
+                const day = parts.at(2);
+                const months = Array.of('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec');
+                return months.at(monthIdx) + '-' + day + ', ' + year;
+            }
+
+            // Helper to build history string compactly to prevent page overflow
+            function buildSnHistoryHtml(records, snKey) {
+                if (records.length === 0) return 'Unknown';
+                const blocks = new Array();
+                let currentSn = Reflect.get(records.at(0), snKey) || 'Unknown';
+                let startDate = Reflect.get(records.at(0), 'date');
+                
+                for (let i = 1; i < records.length; i++) {
+                    const rec = records.at(i);
+                    const recSn = Reflect.get(rec, snKey) || 'Unknown';
+                    if (recSn !== currentSn && recSn !== 'Unknown') {
+                        if (currentSn !== 'Unknown') {
+                            blocks.push('<div class="ml-2 text-[12px] leading-tight text-slate-800">&bull; <span class="font-bold">' + currentSn + '</span> <span class="ml-1">(' + formatStrDateToAlpha(startDate) + ' to ' + formatStrDateToAlpha(rec.date) + ')</span></div>');
+                        }
+                        currentSn = recSn;
+                        startDate = rec.date;
+                    }
+                }
+                
+                if (blocks.length > 0) {
+                     blocks.push('<div class="ml-2 text-[12px] leading-tight text-slate-800">&bull; <span class="font-bold">' + currentSn + '</span> <span class="ml-1">(' + formatStrDateToAlpha(startDate) + ' to Present)</span></div>');
+                     return '<div class="mt-0.5 space-y-0.5">' + blocks.join('') + '</div>';
+                } else {
+                     return '<span class="font-bold text-slate-800">' + currentSn + '</span>';
+                }
+            }
+
+            // Extract the latest SNs for the report headers
+            const alSn = activeAfterloader && activeAfterloader !== 'Unknown' ? activeAfterloader : 'Unknown';
+            const dummyHtml = buildSnHistoryHtml(chartData, 'dummy_sn');
+            const sourceHtml = buildSnHistoryHtml(chartData, 'source_sn');
+            
+            const formattedStartStr = formatStrDateToAlpha(startStr);
+            const formattedEndStr = formatStrDateToAlpha(endStr);
 
             const printWindow = window.open('', '_blank');
             printWindow.document.write(`
@@ -795,7 +1124,7 @@
                     <script src="https://cdn.tailwindcss.com"><\/script>
                     <script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script>
                     <style>
-                        /* margin: 0 combined with body padding suppresses browser default headers/footers (about:blank) */
+                        /* Suppresses browser's default generated headers/footers (e.g. about:blank or page URLs) */
                         @page { size: letter portrait; margin: 0; }
                         @media print {
                             body { 
@@ -808,33 +1137,35 @@
                         
                         body { font-family: 'Inter', sans-serif; background: #fff; color: #000; margin: 0; }
                         
-                        /* Fixed physical width wrapper guarantees no right-side cutoff during printing */
+                        /* Fixed physical 190mm constraint prevents random browser scaling from cutting off the right side */
                         .print-wrapper { width: 190mm; margin: 0 auto; }
-                        
                         /* Apply padding to individual pages so page 2 also gets a top margin */
                         .page-content { padding-top: 15mm; padding-bottom: 15mm; }
+                        .chart-block { margin-bottom: 15px; text-align: center; }
                         
-                        .chart-block { margin-bottom: 25px; text-align: center; }
-                        
-                        .report-header { margin-bottom: 20px; border-bottom: 2px solid #1e293b; padding-bottom: 10px; display: flex; justify-content: space-between; align-items: flex-end; }
+                        .report-header { margin-bottom: 10px; border-bottom: 2px solid #1e293b; padding-bottom: 6px; display: flex; justify-content: space-between; align-items: flex-end; }
                         .report-footer { margin-top: 15px; padding-top: 10px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #64748b; display: flex; justify-content: space-between; }
                         
                         .legend-container { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-bottom: 4px; }
                         .legend-dot { width: 10px; height: 10px; background-color: #f59e0b; border: 1.5px solid #d97706; border-radius: 50%; }
                         .legend-text { font-size: 12px; font-weight: bold; color: #334155; }
                         
-                        /* Force canvas to fit the fixed 190mm container */
+                        /* Essential for canvas to adapt correctly within the fixed constraint */
                         canvas { max-width: 100% !important; height: auto !important; }
                     </style>
                 </head>
                 <body>
                     <div class="print-wrapper">
-                        <!-- PAGE 1: DUMMY CABLES -->
+                        <!-- PAGE 1: DUMMY CABLES OVERVIEW -->
                         <div class="page-break page-content">
                             <div class="report-header">
                                 <div>
                                     <h1 class="text-2xl font-bold tracking-tight text-slate-900 m-0">Bravos PVT Report - Dummy Cables</h1>
-                                    <p class="text-slate-800 mt-2 font-bold text-lg m-0">Date Range: ${startStr} to ${endStr}</p>
+                                    <p class="text-slate-800 mt-1 font-bold text-lg m-0">Date Range: ${formattedStartStr} to ${formattedEndStr}</p>
+                                    <div class="mt-1 text-[13px] text-slate-600 space-y-0.5">
+                                        <p>Afterloader SN: <span class="font-bold text-slate-800">${alSn}</span></p>
+                                        <div>Dummy Cable SN: ${dummyHtml}</div>
+                                    </div>
                                 </div>
                                 <div class="text-right">
                                     <div class="legend-container">
@@ -845,18 +1176,18 @@
                                 </div>
                             </div>
 
-                            <!-- Hardcoded canvas widths/heights to bypass dynamic clipping bug -->
+                            <!-- Fixed dimensions bypass Chart.js buggy responsive calculations during sudden print reflows -->
                             <div class="chart-block">
                                 <h3 class="font-bold text-[16px] text-indigo-900 mb-1">Dummy Cable 90 cm</h3>
-                                <canvas id="c_dummy_90" width="1200" height="320"></canvas>
+                                <canvas id="c_dummy_90" width="1200" height="290"></canvas>
                             </div>
                             <div class="chart-block">
                                 <h3 class="font-bold text-[16px] text-indigo-900 mb-1">Dummy Cable 120 cm</h3>
-                                <canvas id="c_dummy_120" width="1200" height="320"></canvas>
+                                <canvas id="c_dummy_120" width="1200" height="290"></canvas>
                             </div>
                             <div class="chart-block">
                                 <h3 class="font-bold text-[16px] text-indigo-900 mb-1">Dummy Cable 150 cm</h3>
-                                <canvas id="c_dummy_150" width="1200" height="320"></canvas>
+                                <canvas id="c_dummy_150" width="1200" height="290"></canvas>
                             </div>
                             
                             <div class="report-footer">
@@ -865,12 +1196,16 @@
                             </div>
                         </div>
 
-                        <!-- PAGE 2: SOURCE CABLES -->
+                        <!-- PAGE 2: SOURCE CABLES OVERVIEW -->
                         <div class="page-content">
                             <div class="report-header">
                                 <div>
                                     <h1 class="text-2xl font-bold tracking-tight text-slate-900 m-0">Bravos PVT Report - Source Cables</h1>
-                                    <p class="text-slate-800 mt-2 font-bold text-lg m-0">Date Range: ${startStr} to ${endStr}</p>
+                                    <p class="text-slate-800 mt-1 font-bold text-lg m-0">Date Range: ${formattedStartStr} to ${formattedEndStr}</p>
+                                    <div class="mt-1 text-[13px] text-slate-600 space-y-0.5">
+                                        <p>Afterloader SN: <span class="font-bold text-slate-800">${alSn}</span></p>
+                                        <div>Source Cable SN: ${sourceHtml}</div>
+                                    </div>
                                 </div>
                                 <div class="text-right">
                                     <div class="legend-container">
@@ -883,15 +1218,15 @@
 
                             <div class="chart-block">
                                 <h3 class="font-bold text-[16px] text-emerald-900 mb-1">Source Cable 90 cm</h3>
-                                <canvas id="c_source_90" width="1200" height="320"></canvas>
+                                <canvas id="c_source_90" width="1200" height="290"></canvas>
                             </div>
                             <div class="chart-block">
                                 <h3 class="font-bold text-[16px] text-emerald-900 mb-1">Source Cable 120 cm</h3>
-                                <canvas id="c_source_120" width="1200" height="320"></canvas>
+                                <canvas id="c_source_120" width="1200" height="290"></canvas>
                             </div>
                             <div class="chart-block">
                                 <h3 class="font-bold text-[16px] text-emerald-900 mb-1">Source Cable 150 cm</h3>
-                                <canvas id="c_source_150" width="1200" height="320"></canvas>
+                                <canvas id="c_source_150" width="1200" height="290"></canvas>
                             </div>
                             
                             <div class="report-footer">
@@ -904,8 +1239,8 @@
                     <script>
                         const data = ${JSON.stringify(chartData)};
                         const labels = data.map(d => {
-                            // Extract ONLY the date part (YYYY-MM-DD) for the PDF labels
-                            return d.date.split(' ')[0];
+                            // Extract ONLY the date part for the PDF labels
+                            return d.date.split(' ').at(0);
                         });
                         
                         const sourceExchangePlugin = {
@@ -915,12 +1250,12 @@
                                 const xAxis = chart.scales.x;
                                 const yAxis = chart.scales.y;
                                 
-                                // Determine if this is a dummy plot by checking the canvas ID
                                 const isDummy = chart.canvas.id.includes('dummy');
-                                const indicatorText = isDummy ? '(NEW SOURCE)' : 'NEW SOURCE';
+                                const indicatorText = isDummy ? 'NEW DUMMY' : 'NEW SOURCE';
                                 
                                 data.forEach((d, index) => {
-                                    if (d.is_new_source) {
+                                    const trigger = isDummy ? d.is_new_dummy : d.is_new_source;
+                                    if (trigger) {
                                         const x = xAxis.getPixelForValue(index);
                                         
                                         ctx.save();
@@ -928,12 +1263,12 @@
                                         ctx.moveTo(x, yAxis.top);
                                         ctx.lineTo(x, yAxis.bottom);
                                         ctx.lineWidth = 2;
-                                        ctx.strokeStyle = '#ef4444'; // Red line
-                                        ctx.setLineDash([5, 5]);
+                                        ctx.strokeStyle = '#ef4444'; 
+                                        ctx.setLineDash(Array.of(5, 5)); 
                                         ctx.stroke();
                                         
                                         ctx.fillStyle = '#ef4444';
-                                        ctx.font = 'bold 12px sans-serif'; // Bigger font for print
+                                        ctx.font = 'bold 12px sans-serif'; 
                                         ctx.textAlign = 'center';
                                         ctx.textBaseline = 'bottom';
                                         ctx.fillText(indicatorText, x, yAxis.top - 2);
@@ -948,26 +1283,24 @@
                                 type: 'line',
                                 data: {
                                     labels: labels,
-                                    datasets: [{
-                                        data: data.map(d => d[key]),
+                                    datasets: Array.of({
+                                        data: data.map(d => Reflect.get(d, key)),
                                         borderColor: color,
                                         backgroundColor: color + '1A',
-                                        borderWidth: 3, // Made thicker for better print visibility
+                                        borderWidth: 3, 
                                         tension: 0.1, 
                                         pointRadius: 4, 
                                         fill: true,
-                                        pointBackgroundColor: (context) => data[context.dataIndex].calibration_performed ? '#f59e0b' : '#fff',
-                                        pointBorderColor: (context) => data[context.dataIndex].calibration_performed ? '#d97706' : color,
+                                        pointBackgroundColor: (context) => data.at(context.dataIndex).calibration_performed ? '#f59e0b' : '#fff',
+                                        pointBorderColor: (context) => data.at(context.dataIndex).calibration_performed ? '#d97706' : color,
                                         pointBorderWidth: 2
-                                    }]
+                                    })
                                 },
                                 options: {
-                                    // CRITICAL: responsive false prevents the chart from resizing and chopping off the right side during print dialog
                                     responsive: false, 
                                     maintainAspectRatio: false,
                                     animation: false, 
                                     layout: {
-                                        // Increased right padding from 25 to 45 to ensure (NEW SOURCE) doesn't get cut off
                                         padding: { right: 45, left: 10, top: 18, bottom: 10 } 
                                     },
                                     scales: {
@@ -979,7 +1312,7 @@
                                         },
                                         x: {
                                             ticks: { 
-                                                font: { size: 14, weight: 'bold' }, // Significantly increased the font size for dates
+                                                font: { size: 14, weight: 'bold' }, 
                                                 maxRotation: 45, 
                                                 minRotation: 45,
                                                 maxTicksLimit: 30 
@@ -988,7 +1321,7 @@
                                     },
                                     plugins: { legend: { display: false } }
                                 },
-                                plugins: [sourceExchangePlugin]
+                                plugins: Array.of(sourceExchangePlugin)
                             });
                         }
 
@@ -1000,7 +1333,6 @@
                             createChart('c_source_120', 'source_120', '#059669');
                             createChart('c_source_150', 'source_150', '#059669');
                             
-                            // Slight delay to ensure charts are fully rendered in their fixed size
                             setTimeout(() => {
                                 window.print();
                             }, 500);
