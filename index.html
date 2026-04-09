@@ -5,6 +5,7 @@
     ========================================================
     UPDATE LOG
     ========================================================
+    - 2026-04-09: (ULTIMATE TIME/DATE PARSER) Upgraded Excel paste logic to a fully universal regex parser. It now safely extracts digits and mathematically converts AM/PM or localized time strings (like "오후", "오전") into strict 24-hour formats, preventing NaN time-sorting bugs.
     - 2026-04-09: (EXPORT STANDARDIZATION) Explicitly enforced and commented hardcoded English column headers and "Yes" statuses in clipboard exports to guarantee seamless re-importing across any global OS locale.
     - 2026-04-09: (UNIVERSAL EXCEL FIX) Removed language-specific boolean checks ("Ja", "Wahr") to keep data export/import universally standardized on "Yes". Retained universal date (DD.MM.YYYY) and decimal parsing.
     - 2026-04-09: (GERMAN EXCEL FIX) Enhanced Excel paste logic to support European date formats (DD.MM.YYYY) and translated booleans ("Ja", "Wahr") directly from clipboard data.
@@ -529,41 +530,48 @@
                 let rawDate = cols.at(0) || '';
                 if (!rawDate) return;
                 
-                let formattedDate = '';
+                // 1. Universal Date Extractor (Handles -, ., / separators safely)
+                const dateRegex = /^(\d{1,4})[-./](\d{1,2})[-./](\d{1,4})/;
+                const dateMatch = rawDate.match(dateRegex);
+                if (!dateMatch) return; // Skip if no valid date found
                 
-                // Separate date and time parts from string like "8/26/2025 18:20"
-                let dateOnly = rawDate.split(' ').at(0);
-                let timeOnly = rawDate.includes(' ') ? rawDate.split(' ').slice(1).join(' ') : '00:00:00';
-                if (timeOnly.split(':').length === 2) timeOnly += ':00'; // Append seconds if format is just HH:MM
+                let p1 = dateMatch.at(1);
+                let p2 = dateMatch.at(2);
+                let p3 = dateMatch.at(3);
+                let y, m, d_part;
                 
-                // Normalize dates into YYYY-MM-DD
-                if (/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) {
-                    formattedDate = dateOnly;
-                } else if (/^\d{4}\.\d{2}\.\d{2}$/.test(dateOnly)) {
-                    formattedDate = dateOnly.replace(/\./g, '-');
-                } else if (/^\d{1,2}\.\d{1,2}\.(\d{2}|\d{4})$/.test(dateOnly)) {
-                    // EU format: DD.MM.YYYY or DD.MM.YY
-                    const dParts = dateOnly.split('.');
-                    let d_part = dParts.at(0);
-                    let m = dParts.at(1);
-                    let y = dParts.at(2);
-                    if (y.length === 2) y = '20' + y;
-                    formattedDate = `${y}-${m.padStart(2, '0')}-${d_part.padStart(2, '0')}`;
-                } else if (/^\d{1,2}\/\d{1,2}\/(\d{2}|\d{4})$/.test(dateOnly)) {
-                    const dParts = dateOnly.split('/');
-                    let p1 = dParts.at(0);
-                    let p2 = dParts.at(1);
-                    let y = dParts.at(2);
-                    if (y.length === 2) y = '20' + y; 
-                    // Auto-detect DD/MM vs MM/DD (if first part is > 12, it must be DD)
-                    let m = p1, d_part = p2;
-                    if (parseInt(p1, 10) > 12) { d_part = p1; m = p2; }
-                    formattedDate = `${y}-${m.padStart(2, '0')}-${d_part.padStart(2, '0')}`;
+                if (p1.length === 4) {
+                    y = p1; m = p2; d_part = p3; // YYYY-MM-DD
                 } else {
-                    return; // Likely a header row or garbage data
+                    y = p3.length === 2 ? '20' + p3 : p3; // Handle 2-digit years
+                    if (parseInt(p1, 10) > 12) { d_part = p1; m = p2; } // DD/MM (EU/World)
+                    else { m = p1; d_part = p2; } // Default MM/DD (US)
+                }
+                
+                let formattedDate = `${y}-${m.padStart(2, '0')}-${d_part.padStart(2, '0')}`;
+
+                // 2. Universal Time Extractor (Handles AM/PM, 오전/오후, 24h formats)
+                const timeRegex = /(\d{1,2}):(\d{2})(?::(\d{2}))?/;
+                const timeMatch = rawDate.match(timeRegex);
+                
+                let finalTime = '00:00:00';
+                if (timeMatch) {
+                    let hours = parseInt(timeMatch.at(1), 10);
+                    let mins = timeMatch.at(2);
+                    let secs = timeMatch.at(3) || '00';
+                    
+                    // Detect AM/PM markers across languages (English, Korean, etc.)
+                    const lowerRaw = rawDate.toLowerCase();
+                    const isPM = lowerRaw.includes('pm') || lowerRaw.includes('오후');
+                    const isAM = lowerRaw.includes('am') || lowerRaw.includes('오전');
+                    
+                    if (isPM && hours < 12) hours += 12;
+                    if (isAM && hours === 12) hours = 0; // Midnight
+                    
+                    finalTime = `${String(hours).padStart(2, '0')}:${mins}:${secs}`;
                 }
 
-                let fullDisplayDate = rawDate.includes(' ') ? `${formattedDate} ${timeOnly}` : formattedDate;
+                let fullDisplayDate = `${formattedDate} ${finalTime}`;
 
                 // Smart float parsing supporting both US/EU decimal styling
                 const parseVal = (v) => { 
@@ -583,7 +591,7 @@
                     return isNaN(n) ? null : n; 
                 };
 
-                const timeForSort = new Date(`${formattedDate}T${timeOnly}`).getTime();
+                const timeForSort = new Date(`${formattedDate}T${finalTime}`).getTime();
 
                 // Check for the 9th column indicating a "New Dummy" event
                 let pastedNewDummy = false;
