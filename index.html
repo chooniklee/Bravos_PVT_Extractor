@@ -5,6 +5,9 @@
     ========================================================
     UPDATE LOG
     ========================================================
+    - 2026-04-09: (EXPORT STANDARDIZATION) Explicitly enforced and commented hardcoded English column headers and "Yes" statuses in clipboard exports to guarantee seamless re-importing across any global OS locale.
+    - 2026-04-09: (UNIVERSAL EXCEL FIX) Removed language-specific boolean checks ("Ja", "Wahr") to keep data export/import universally standardized on "Yes". Retained universal date (DD.MM.YYYY) and decimal parsing.
+    - 2026-04-09: (GERMAN EXCEL FIX) Enhanced Excel paste logic to support European date formats (DD.MM.YYYY) and translated booleans ("Ja", "Wahr") directly from clipboard data.
     - 2026-04-07: (UI TWEAK) Made the "Generate Report" button text dynamic to automatically display the currently active Afterloader SN.
     - 2026-04-07: (UI TWEAK) Updated SN history text styling in PDF report to use solid black text without italics for better readability.
     - 2026-04-07: (GLOBAL EXPORT FIX) Added auto-locale detection to the copy-to-clipboard function. Converts decimal points to commas automatically if the user's OS is set to a European locale, preventing Excel text-parsing errors.
@@ -538,12 +541,23 @@
                     formattedDate = dateOnly;
                 } else if (/^\d{4}\.\d{2}\.\d{2}$/.test(dateOnly)) {
                     formattedDate = dateOnly.replace(/\./g, '-');
+                } else if (/^\d{1,2}\.\d{1,2}\.(\d{2}|\d{4})$/.test(dateOnly)) {
+                    // EU format: DD.MM.YYYY or DD.MM.YY
+                    const dParts = dateOnly.split('.');
+                    let d_part = dParts.at(0);
+                    let m = dParts.at(1);
+                    let y = dParts.at(2);
+                    if (y.length === 2) y = '20' + y;
+                    formattedDate = `${y}-${m.padStart(2, '0')}-${d_part.padStart(2, '0')}`;
                 } else if (/^\d{1,2}\/\d{1,2}\/(\d{2}|\d{4})$/.test(dateOnly)) {
                     const dParts = dateOnly.split('/');
-                    let m = dParts.at(0);
-                    let d_part = dParts.at(1);
+                    let p1 = dParts.at(0);
+                    let p2 = dParts.at(1);
                     let y = dParts.at(2);
-                    if (y.length === 2) y = '20' + y; // Assume 21st century for 2-digit years
+                    if (y.length === 2) y = '20' + y; 
+                    // Auto-detect DD/MM vs MM/DD (if first part is > 12, it must be DD)
+                    let m = p1, d_part = p2;
+                    if (parseInt(p1, 10) > 12) { d_part = p1; m = p2; }
                     formattedDate = `${y}-${m.padStart(2, '0')}-${d_part.padStart(2, '0')}`;
                 } else {
                     return; // Likely a header row or garbage data
@@ -1024,8 +1038,24 @@
                 return str;
             };
 
+            // CRITICAL: Hardcoded English headers to ensure universal compatibility when users paste this back into the app later
             const headers = Array.of("Date", "Dummy 90", "Dummy 120", "Dummy 150", "Source 90", "Source 120", "Source 150", "Calibration Performed", "New Dummy", "New Source", "Afterloader SN").join("\t");
-            const dataRows = exportData.map(r => Array.of(r.date, formatExportNum(r.dummy_90), formatExportNum(r.dummy_120), formatExportNum(r.dummy_150), formatExportNum(r.source_90), formatExportNum(r.source_120), formatExportNum(r.source_150), r.calibration_performed ? "Yes" : "", r.is_new_dummy ? "Yes" : "", r.is_new_source ? "Yes" : "", r.afterloader_sn).join("\t")).join("\n");
+            
+            // Data statuses are also hardcoded to English "Yes" regardless of locale
+            const dataRows = exportData.map(r => Array.of(
+                r.date, 
+                formatExportNum(r.dummy_90), 
+                formatExportNum(r.dummy_120), 
+                formatExportNum(r.dummy_150), 
+                formatExportNum(r.source_90), 
+                formatExportNum(r.source_120), 
+                formatExportNum(r.source_150), 
+                r.calibration_performed ? "Yes" : "", 
+                r.is_new_dummy ? "Yes" : "", 
+                r.is_new_source ? "Yes" : "", 
+                r.afterloader_sn
+            ).join("\t")).join("\n");
+            
             const finalString = headers + "\n" + dataRows;
             
             try {
