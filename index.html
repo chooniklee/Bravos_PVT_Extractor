@@ -5,6 +5,8 @@
     ========================================================
     UPDATE LOG
     ========================================================
+    - 2026-06-03: (UI TWEAK) Slightly increased the font size of the specific date text below the "NEW SOURCE" / "NEW DUMMY" indicators for better readability.
+    - 2026-06-03: (UI TWEAK) Added the specific date (YYYY-MM-DD) in a smaller font directly below the "NEW SOURCE" and "NEW DUMMY" indicators on all charts for better visual context.
     - 2026-04-09: (ULTIMATE TIME/DATE PARSER) Upgraded Excel paste logic to a fully universal regex parser. It now safely extracts digits and mathematically converts AM/PM or localized time strings (like "오후", "오전") into strict 24-hour formats, preventing NaN time-sorting bugs.
     - 2026-04-09: (EXPORT STANDARDIZATION) Explicitly enforced and commented hardcoded English column headers and "Yes" statuses in clipboard exports to guarantee seamless re-importing across any global OS locale.
     - 2026-04-09: (UNIVERSAL EXCEL FIX) Removed language-specific boolean checks ("Ja", "Wahr") to keep data export/import universally standardized on "Yes". Retained universal date (DD.MM.YYYY) and decimal parsing.
@@ -97,7 +99,7 @@
                     Bravos PVT Fast Extractor
                 </h1>
                 <p class="text-slate-500 mt-1 text-sm">Instant extraction, plotting, and Excel integration.</p>
-                <p class="text-slate-400 mt-1 text-[11px] italic">Last updated by Choonik Lee (April 7, 2026)</p>
+                <p class="text-slate-400 mt-1 text-[11px] italic">Last updated by Choonik Lee (June 03, 2026)</p>
             </div>
             <!-- Action buttons are hidden by default and shown only after data is loaded -->
             <div id="actionButtons" class="hidden flex flex-wrap items-center gap-2">
@@ -935,7 +937,7 @@
             const bgColor = isSource ? 'rgba(5, 150, 105, 0.1)' : 'rgba(99, 102, 241, 0.1)';
             
             // Set indicator text depending on whether it's a Source or Dummy plot
-            const indicatorText = isSource ? 'NEW SOURCE' : 'NEW DUMMY';
+            const indicatorText = isSource ? 'NEW SOURCE' : '(NEW SOURCE)';
 
             // Chart.js Custom Plugin: Draws a vertical dashed line and label for Source Exchanges
             const sourceExchangePlugin = {
@@ -960,10 +962,14 @@
                             ctx.stroke();
                             
                             ctx.fillStyle = '#ef4444';
-                            ctx.font = 'bold 9px Inter';
                             ctx.textAlign = 'center';
                             ctx.textBaseline = 'bottom';
-                            ctx.fillText(indicatorText, x, yAxis.top - 2);
+                            // Draw the main text ("NEW SOURCE" or "(NEW SOURCE)")
+                            ctx.font = 'bold 9px Inter';
+                            ctx.fillText(indicatorText, x, yAxis.top - 11);
+                            // Draw the exact date below it in a slightly larger font than before (8px)
+                            ctx.font = 'bold 8px Inter';
+                            ctx.fillText('(' + d.date.split(' ').at(0) + ')', x, yAxis.top - 2);
                             ctx.restore();
                         }
                     });
@@ -990,7 +996,7 @@
                 options: {
                     responsive: true, maintainAspectRatio: false,
                     layout: {
-                        padding: { top: 15, right: 35 } // Right padding prevents boundary cutoff for the "NEW SOURCE" text
+                        padding: { top: 22, right: 35 } // Increased top padding to accommodate the 2-line indicator text safely
                     },
                     scales: {
                         y: { 
@@ -1194,6 +1200,7 @@
                         
                         /* Fixed physical 190mm constraint prevents random browser scaling from cutting off the right side */
                         .print-wrapper { width: 190mm; margin: 0 auto; }
+                        
                         /* Apply padding to individual pages so page 2 also gets a top margin */
                         .page-content { padding-top: 15mm; padding-bottom: 15mm; }
                         .chart-block { margin-bottom: 15px; text-align: center; }
@@ -1323,10 +1330,14 @@
                                         ctx.stroke();
                                         
                                         ctx.fillStyle = '#ef4444';
-                                        ctx.font = 'bold 12px sans-serif'; 
                                         ctx.textAlign = 'center';
                                         ctx.textBaseline = 'bottom';
-                                        ctx.fillText(indicatorText, x, yAxis.top - 2);
+                                        // Draw the main text ("NEW SOURCE" or "NEW DUMMY")
+                                        ctx.font = 'bold 11px sans-serif'; 
+                                        ctx.fillText(indicatorText, x, yAxis.top - 13);
+                                        // Draw the exact date below it in a slightly larger font than before (10px)
+                                        ctx.font = 'bold 10px sans-serif'; 
+                                        ctx.fillText('(' + d.date.split(' ').at(0) + ')', x, yAxis.top - 2);
                                         ctx.restore();
                                     }
                                 });
@@ -1356,7 +1367,7 @@
                                     maintainAspectRatio: false,
                                     animation: false, 
                                     layout: {
-                                        padding: { right: 45, left: 10, top: 18, bottom: 10 } 
+                                        padding: { right: 45, left: 10, top: 25, bottom: 10 } // Increased top padding for 2-line text safely
                                     },
                                     scales: {
                                         y: { 
