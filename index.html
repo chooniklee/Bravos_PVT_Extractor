@@ -5,15 +5,19 @@
     ========================================================
     UPDATE LOG
     ========================================================
+    - 2026-10-28: (CRITICAL FIX: CLIPBOARD ROUNDTRIP PARSER BUG)
+                  Fixed column index misalignment when pasting back clipboard data containing
+                  the new 14-column structure (Date, 3x Src-Dum, 3x Dummy, 3x Source, Calib, NewDum, NewSrc, Machine SN).
+                  The parser now auto-detects 14-column vs legacy 8/11-column layouts, properly reads
+                  Dummy at cols 4-6 and Source at cols 7-9, and skips text headers cleanly.
     - 2026-10-28: (CLINICAL TOLERANCE & TAB UI REFINEMENT)
                   1) Strict Tolerance Highlighting (|val| >= 0.10 cm):
-                     - Table: Cells with |error| >= 0.10 cm are now styled with bold red text, light red background, and a warning badge.
-                     - Charts (Single & Expanded): Data points with |error| >= 0.10 cm are prominently flagged with larger solid red warning dots (#ef4444).
+                     - Table: Cells with |error| >= 0.10 cm styled with bold red text, light red background.
+                     - Charts: Data points with |error| >= 0.10 cm flagged with larger solid red warning dots (#ef4444).
                   2) Net Cable Error Header & Tab Naming Clean-up:
-                     - Replaced "Key Clinical Metric" with "Net cable error (Combined source AND dummy cable error, Source - Dummy)".
-                     - Simplified tab labels to clean, large "90 cm", "120 cm", and "150 cm" buttons.
-                  3) "Expand All" Button Renamed & Clarified:
-                     - Renamed button to "View All 9 Plots at Once" (and "Single Plot View" when expanded) with descriptive tooltip so physicists immediately know its purpose.
+                     - Replaced "Key Clinical Metric" with "Net cable error: (Combined source AND dummy cable error, Source - Dummy)".
+                     - Simplified tab labels to clean "90 cm", "120 cm", and "150 cm" buttons.
+                  3) "Expand All" Button Renamed to "View All 9 Plots at Once" / "Single Plot View".
     - 2026-10-28: (HIERARCHY & COLOR-CODING REDESIGN) Restructured Trend Analysis tabs to prioritize clinical safety.
     - 2026-10-22: (FIXED EXPAND ALL BUG) Fixed event handlers for Expand All / Collapse All toggle.
     - 2026-10-22: (UI COLOR TWEAK) Changed the "Src - Dum" difference plot, tab, and table theme color to distinct Cyan/Teal (#0891b2).
@@ -656,20 +660,50 @@
             }
         }
 
+        /**
+         * Parses tabular TSV data pasted from Excel or previously copied clipboard content.
+         * Universal parser that reliably handles:
+         * 1) New 14-column format: Date, 3x Src-Dum, 3x Dummy, 3x Source, Calib, NewDum, NewSrc, SN
+         * 2) Legacy 11-column format: Date, 3x Dummy, 3x Source, Calib, NewDum, NewSrc, SN
+         * 3) Legacy 8-column format: Date, 3x Dummy, 3x Source, Calib
+         * 4) US and European decimal points (. vs ,) and international dates
+         */
         function processPastedText(text) {
             const rows = text.split(/\r\n|\n|\r/);
             const newEntries = new Array();
 
-            rows.forEach((row) => {
+            // Smart float parsing supporting both US/EU decimal styling
+            const parseVal = (v) => { 
+                if (!v) return null; 
+                let str = v.replace(/[+]/g, '').trim();
+                if (str.includes(',') && !str.includes('.')) {
+                    str = str.replace(',', '.');
+                } else if (str.includes(',') && str.includes('.')) {
+                    str = str.replace(/,/g, '');
+                }
+                const n = parseFloat(str); 
+                return isNaN(n) ? null : n; 
+            };
+
+            // Detect if the entire text contains the new 14-column header
+            const firstRowLower = (rows.at(0) || '').toLowerCase();
+            const hasHeaderRow = firstRowLower.includes('date') || firstRowLower.includes('datum');
+
+            rows.forEach((row, rowIdx) => {
                 const cols = row.split('\t').map(c => c.trim());
-                if (cols.length < 7) return;
+                if (cols.length < 7) return; // Skip invalid rows
 
                 let rawDate = cols.at(0) || '';
                 if (!rawDate) return;
-                
+
+                // Skip header line if present
+                const rawDateLower = rawDate.toLowerCase();
+                if (rawDateLower === 'date' || rawDateLower === 'datum' || rawDateLower.includes('date/time')) return;
+
+                // 1. Universal Date Extractor (Handles -, ., / separators safely)
                 const dateRegex = /^(\d{1,4})[-./](\d{1,2})[-./](\d{1,4})/;
                 const dateMatch = rawDate.match(dateRegex);
-                if (!dateMatch) return;
+                if (!dateMatch) return; // Skip row if no date is found
                 
                 let p1 = dateMatch.at(1);
                 let p2 = dateMatch.at(2);
@@ -686,6 +720,7 @@
                 
                 let formattedDate = `${y}-${m.padStart(2, '0')}-${d_part.padStart(2, '0')}`;
 
+                // 2. Universal Time Extractor
                 const timeRegex = /(\d{1,2}):(\d{2})(?::(\d{2}))?/;
                 const timeMatch = rawDate.match(timeRegex);
                 
@@ -706,48 +741,62 @@
                 }
 
                 let fullDisplayDate = `${formattedDate} ${finalTime}`;
-
-                const parseVal = (v) => { 
-                    if (!v) return null; 
-                    let str = v.replace(/[+]/g, '').trim();
-                    if (str.includes(',') && !str.includes('.')) {
-                        str = str.replace(',', '.');
-                    } else if (str.includes(',') && str.includes('.')) {
-                        str = str.replace(/,/g, '');
-                    }
-                    const n = parseFloat(str); 
-                    return isNaN(n) ? null : n; 
-                };
-
                 const timeForSort = new Date(`${formattedDate}T${finalTime}`).getTime();
 
-                const d90 = parseVal(cols.at(1)), d120 = parseVal(cols.at(2)), d150 = parseVal(cols.at(3));
-                const s90 = parseVal(cols.at(4)), s120 = parseVal(cols.at(5)), s150 = parseVal(cols.at(6));
+                // 3. Robust Layout Detection (14-column vs Legacy 8/11-column)
+                // In 14-col export: Cols 1,2,3 are Diff | Cols 4,5,6 are Dummy | Cols 7,8,9 are Source
+                // In Legacy export: Cols 1,2,3 are Dummy | Cols 4,5,6 are Source
+                const is14ColLayout = (cols.length >= 13) || (hasHeaderRow && firstRowLower.includes('src-dum'));
 
-                const col7Val = parseVal(cols.at(7));
-                const isNewFormat = (cols.length >= 13) || (col7Val !== null);
+                let d90, d120, d150, s90, s120, s150;
+                let calibIndex, newDummyIndex, newSourceIndex, snIndex;
 
-                let calibIndex = isNewFormat ? 10 : 7;
-                let newDummyIndex = isNewFormat ? 11 : 8;
-                let newSourceIndex = isNewFormat ? 12 : 9;
-                let snIndex = isNewFormat ? 13 : 10;
+                if (is14ColLayout) {
+                    // Cols 1, 2, 3 are diff (can be recalculated, but Dummy is at 4,5,6 and Source at 7,8,9)
+                    d90  = parseVal(cols.at(4));
+                    d120 = parseVal(cols.at(5));
+                    d150 = parseVal(cols.at(6));
+
+                    s90  = parseVal(cols.at(7));
+                    s120 = parseVal(cols.at(8));
+                    s150 = parseVal(cols.at(9));
+
+                    calibIndex     = 10;
+                    newDummyIndex  = 11;
+                    newSourceIndex = 12;
+                    snIndex        = 13;
+                } else {
+                    // Legacy layout
+                    d90  = parseVal(cols.at(1));
+                    d120 = parseVal(cols.at(2));
+                    d150 = parseVal(cols.at(3));
+
+                    s90  = parseVal(cols.at(4));
+                    s120 = parseVal(cols.at(5));
+                    s150 = parseVal(cols.at(6));
+
+                    calibIndex     = 7;
+                    newDummyIndex  = 8;
+                    newSourceIndex = 9;
+                    snIndex        = 10;
+                }
 
                 let hasCalib = false;
                 if (cols.length > calibIndex && cols.at(calibIndex)) {
                     const val = cols.at(calibIndex).toLowerCase();
-                    hasCalib = val.includes('yes') || val.includes('true');
+                    hasCalib = val.includes('yes') || val.includes('true') || val.includes('ja') || val.includes('wahr');
                 }
 
                 let pastedNewDummy = false;
                 if (cols.length > newDummyIndex && cols.at(newDummyIndex)) {
                     const val = cols.at(newDummyIndex).toLowerCase();
-                    pastedNewDummy = val.includes('yes') || val.includes('true');
+                    pastedNewDummy = val.includes('yes') || val.includes('true') || val.includes('ja') || val.includes('wahr');
                 }
 
                 let pastedNewSource = false;
                 if (cols.length > newSourceIndex && cols.at(newSourceIndex)) {
                     const val = cols.at(newSourceIndex).toLowerCase();
-                    pastedNewSource = val.includes('yes') || val.includes('true');
+                    pastedNewSource = val.includes('yes') || val.includes('true') || val.includes('ja') || val.includes('wahr');
                 }
 
                 let pastedAfterloaderSn = 'Unknown';
