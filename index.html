@@ -5,6 +5,25 @@
     ========================================================
     UPDATE LOG
     ========================================================
+    - 2026-10-29: (FINAL CONSOLIDATED RELEASE: EVENT VISUALIZATION & REPORT STANDARDIZATION)
+                  1) Unified Marker Hierarchy & Color Scheme:
+                     - Reverted all markers to clean, standard circular dots for visual consistency.
+                     - Red Dot (#ef4444): Priority Tolerance Warning (|error| >= 0.10 cm).
+                     - Orange Dot (#f59e0b): Source / Cable Exchange. Takes precedence when an exchange
+                       and calibration co-occur on the same run/date.
+                     - Purple Dot (#8b5cf6): Calibration Performed (isolated/routine calibration without cable exchange).
+                     - White Dot (Series-border): Standard routine QA measurement within tolerance.
+                  2) Cross-Plot Event Logic Alignment:
+                     - Extended exchange marker priority to Dummy and Net Diff plots so co-occurring 
+                       calibration and exchange runs reliably render as Orange across all views.
+                     - Dummy plots distinctly track both physical Dummy replacement and system Source exchanges.
+                  3) Legend & Nomenclature Harmonization:
+                     - Standardized legend labels across Web UI and all 3 PDF report pages to "Source / Cable Exchange".
+                     - Eliminated redundant timeline lines and awkward marker key descriptors.
+                  4) PDF Report Prioritization (Dr. Lee's Architecture):
+                     - Page 1: Net Clinical Error (Source - Dummy) - Primary clinical safety metric.
+                     - Page 2: Dummy Cable Components (90, 120, 150 cm).
+                     - Page 3: Source Cable Components (90, 120, 150 cm).
     - 2026-10-28: (CRITICAL FIX: CLIPBOARD ROUNDTRIP PARSER BUG)
                   Fixed column index misalignment when pasting back clipboard data containing
                   the new 14-column structure (Date, 3x Src-Dum, 3x Dummy, 3x Source, Calib, NewDum, NewSrc, Machine SN).
@@ -322,6 +341,25 @@
                                             <button data-chart-key="source_90" onclick="switchChart('source_90', event)" class="tab-btn tab-source-idle px-2.5 py-1 text-[11px] font-bold rounded border transition-all">90cm</button>
                                             <button data-chart-key="source_120" onclick="switchChart('source_120', event)" class="tab-btn tab-source-idle px-2.5 py-1 text-[11px] font-bold rounded border transition-all ml-1">120cm</button>
                                             <button data-chart-key="source_150" onclick="switchChart('source_150', event)" class="tab-btn tab-source-idle px-2.5 py-1 text-[11px] font-bold rounded border transition-all ml-1">150cm</button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Event Visual Legend Bar -->
+                                <div class="flex flex-wrap items-center justify-between text-[11px] bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-slate-600">
+                                    <span class="font-bold text-[10px] uppercase tracking-wider text-slate-400">Marker Key:</span>
+                                    <div class="flex flex-wrap items-center gap-4">
+                                        <div class="flex items-center gap-1.5">
+                                            <span class="w-2.5 h-2.5 rounded-full bg-red-500 border border-red-700"></span>
+                                            <span class="font-medium text-slate-700">&ge; &plusmn;0.10 cm Warning</span>
+                                        </div>
+                                        <div class="flex items-center gap-1.5">
+                                            <span class="w-2.5 h-2.5 rounded-full bg-purple-500 border border-purple-700"></span>
+                                            <span class="font-medium text-slate-700">Calibration Performed</span>
+                                        </div>
+                                        <div class="flex items-center gap-1.5">
+                                            <span class="w-2.5 h-2.5 rounded-full bg-amber-500 border border-amber-600"></span>
+                                            <span class="font-medium text-slate-700">Source / Cable Exchange</span>
                                         </div>
                                     </div>
                                 </div>
@@ -1141,6 +1179,8 @@
         function createExchangePlugin(chartData, key) {
             const isSource = key.startsWith('source');
             const isDiff = key.startsWith('diff');
+            const isDummy = key.startsWith('dummy');
+
             return {
                 id: 'sourceExchange_' + key,
                 afterDraw: (chart) => {
@@ -1149,27 +1189,42 @@
                     const yAxis = chart.scales.y;
                     
                     chartData.forEach((d, index) => {
-                        const trigger = isSource ? d.is_new_source : (isDiff ? (d.is_new_source || d.is_new_dummy) : d.is_new_dummy);
+                        // In Dummy plots: Show NEW DUMMY in Red line, and optionally show SOURCE EXCHANGE in grey/amber line
+                        let trigger = false;
+                        let labelText = '';
+                        let lineColor = '#ef4444';
+
+                        if (isDiff) {
+                            if (d.is_new_source && d.is_new_dummy) { trigger = true; labelText = 'NEW SRC & DUM'; }
+                            else if (d.is_new_source) { trigger = true; labelText = 'NEW SOURCE'; }
+                            else if (d.is_new_dummy) { trigger = true; labelText = 'NEW DUMMY'; }
+                        } else if (isSource) {
+                            if (d.is_new_source) { trigger = true; labelText = 'NEW SOURCE'; }
+                        } else if (isDummy) {
+                            if (d.is_new_dummy) {
+                                trigger = true;
+                                labelText = 'NEW DUMMY';
+                                lineColor = '#7c3aed'; // Purple line for New Dummy
+                            } else if (d.is_new_source) {
+                                // Clear differentiation: Source exchange noted on Dummy plot without confusing with New Dummy
+                                trigger = true;
+                                labelText = 'SRC EXCHANGE';
+                                lineColor = '#94a3b8'; // Subtle Slate/Grey line
+                            }
+                        }
+
                         if (trigger) {
                             const x = xAxis.getPixelForValue(index);
-                            
-                            let labelText = isSource ? 'NEW SOURCE' : 'NEW DUMMY';
-                            if (isDiff) {
-                                if (d.is_new_source && d.is_new_dummy) labelText = 'NEW SRC & DUM';
-                                else if (d.is_new_source) labelText = 'NEW SOURCE';
-                                else labelText = 'NEW DUMMY';
-                            }
-
                             ctx.save();
                             ctx.beginPath();
                             ctx.moveTo(x, yAxis.top);
                             ctx.lineTo(x, yAxis.bottom);
                             ctx.lineWidth = 1.5;
-                            ctx.strokeStyle = '#ef4444'; 
+                            ctx.strokeStyle = lineColor;
                             ctx.setLineDash(Array.of(4, 4));
                             ctx.stroke();
                             
-                            ctx.fillStyle = '#ef4444';
+                            ctx.fillStyle = lineColor;
                             ctx.textAlign = 'center';
                             ctx.textBaseline = 'bottom';
                             ctx.font = 'bold 8px Inter';
@@ -1184,37 +1239,64 @@
         }
 
         /**
-         * Computes point marker styling:
-         * 1) If |val| >= 0.10 cm: Warning solid Red dot (#ef4444)
-         * 2) Else if Calibration performed: Amber dot (#f59e0b)
-         * 3) Normal: White dot with series border
+         * Distinctly computes point marker styling:
+         * 1) |val| >= 0.10 cm: Priority Red warning circle (#ef4444)
+         * 2) Calibration Performed: Purple circular dot (#8b5cf6)
+         * 3) Cable / Source Exchange Event: Orange circular dot (#f59e0b)
+         * 4) Normal: Series-colored hollow dot
          */
         function getPointStyling(chartData, key, mainColor) {
             const bgColors = [];
             const borderColors = [];
             const radii = [];
+            const pointStyles = [];
+
+            const isDummy = key.startsWith('dummy');
+            const isSource = key.startsWith('source');
+            const isDiff = key.startsWith('diff');
 
             chartData.forEach(d => {
                 const val = Reflect.get(d, key);
+                const hasCalib = d.calibration_performed;
+
+                let isCableChange = false;
+                if (isDummy) {
+                    // On Dummy plots, both Dummy replacements and system Source exchanges trigger the exchange marker
+                    isCableChange = d.is_new_dummy || d.is_new_source;
+                } else if (isSource) {
+                    isCableChange = d.is_new_source;
+                } else if (isDiff) {
+                    isCableChange = d.is_new_source || d.is_new_dummy;
+                }
+
                 if (isOut(val)) {
-                    // Out of tolerance warning point
+                    // 1. Tolerance Warning (Solid Red Dot)
                     bgColors.push('#ef4444');
                     borderColors.push('#b91c1c');
                     radii.push(5.5);
-                } else if (d.calibration_performed) {
-                    // Calibration dot
+                    pointStyles.push('circle');
+                } else if (isCableChange) {
+                    // 2. Source / Cable Exchange Event takes precedence when both occur (Orange Circle)
                     bgColors.push('#f59e0b');
                     borderColors.push('#d97706');
-                    radii.push(4);
+                    radii.push(4.5);
+                    pointStyles.push('circle');
+                } else if (hasCalib) {
+                    // 3. Calibration Performed without exchange (Purple Circle)
+                    bgColors.push('#8b5cf6');
+                    borderColors.push('#6d28d9');
+                    radii.push(4.5);
+                    pointStyles.push('circle');
                 } else {
-                    // Normal point
+                    // 4. Normal observation
                     bgColors.push('#ffffff');
                     borderColors.push(mainColor);
                     radii.push(3.5);
+                    pointStyles.push('circle');
                 }
             });
 
-            return { bgColors, borderColors, radii };
+            return { bgColors, borderColors, radii, pointStyles };
         }
 
         function renderExpandedCharts() {
@@ -1257,6 +1339,7 @@
                             borderColor: mainColor, backgroundColor: bgColor,
                             borderWidth: 1.5, tension: 0.1, fill: true,
                             pointRadius: pointStyle.radii,
+                            pointStyle: pointStyle.pointStyles,
                             pointBackgroundColor: pointStyle.bgColors,
                             pointBorderColor: pointStyle.borderColors,
                             pointBorderWidth: 1.5
@@ -1325,6 +1408,7 @@
                         borderColor: mainColor, backgroundColor: bgColor, 
                         borderWidth: 2, tension: 0.1, fill: true,
                         pointRadius: pointStyle.radii,
+                        pointStyle: pointStyle.pointStyles,
                         pointBackgroundColor: pointStyle.bgColors,
                         pointBorderColor: pointStyle.borderColors,
                         pointBorderWidth: 1.5
@@ -1364,8 +1448,16 @@
                                 label: function(context) {
                                     const val = context.raw;
                                     const formatted = formatNum(val);
-                                    if (isOut(val)) {
-                                        return ` ${formatted} cm (WARNING: \u2265 \u00B10.10 cm)`;
+                                    const item = chartData.at(context.dataIndex);
+                                    
+                                    let extraNotes = [];
+                                    if (isOut(val)) extraNotes.push('WARNING: \u2265 \u00B10.10 cm');
+                                    if (item.calibration_performed) extraNotes.push('Calibration Performed');
+                                    if (item.is_new_dummy) extraNotes.push('New Dummy Cable');
+                                    if (item.is_new_source) extraNotes.push('New Source Cable');
+
+                                    if (extraNotes.length > 0) {
+                                        return ` ${formatted} cm [${extraNotes.join(', ')}]`;
                                     }
                                     return ` ${formatted} cm`;
                                 }
@@ -1531,11 +1623,11 @@
                         
                         .report-header { margin-bottom: 10px; border-bottom: 2px solid #1e293b; padding-bottom: 6px; display: flex; justify-content: space-between; align-items: flex-end; }
                         .report-footer { margin-top: 15px; padding-top: 10px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #64748b; display: flex; justify-content: space-between; }
-                        
-                        .legend-container { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-bottom: 4px; }
+                        .legend-container { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-bottom: 4px; flex-wrap: wrap; }
                         .legend-item { display: flex; align-items: center; gap: 4px; }
-                        .legend-dot-calib { width: 9px; height: 9px; background-color: #f59e0b; border: 1.5px solid #d97706; border-radius: 50%; }
                         .legend-dot-warn { width: 9px; height: 9px; background-color: #ef4444; border: 1.5px solid #b91c1c; border-radius: 50%; }
+                        .legend-dot-calib { width: 9px; height: 9px; background-color: #8b5cf6; border: 1.5px solid #6d28d9; border-radius: 50%; }
+                        .legend-dot-exchange { width: 9px; height: 9px; background-color: #f59e0b; border: 1.5px solid #d97706; border-radius: 50%; }
                         .legend-text { font-size: 11px; font-weight: bold; color: #334155; }
                         
                         canvas { max-width: 100% !important; height: auto !important; }
@@ -1543,52 +1635,7 @@
                 </head>
                 <body>
                     <div class="print-wrapper">
-                        <!-- PAGE 1: NET CLINICAL DIFFERENCE (SOURCE - DUMMY) -->
-                        <div class="page-break page-content">
-                            <div class="report-header">
-                                <div>
-                                    <h1 class="text-2xl font-bold tracking-tight text-slate-900 m-0">Bravos PVT Report - Net Cable Error (Source - Dummy)</h1>
-                                    <p class="text-slate-800 mt-1 font-bold text-lg m-0">Date Range: ${formattedStartStr} to ${formattedEndStr}</p>
-                                    <div class="mt-1 text-[13px] text-slate-600 space-y-0.5">
-                                        <p>Afterloader SN: <span class="font-bold text-slate-800">${alSn}</span></p>
-                                        <div>Dummy Cable SN: ${dummyHtml}</div>
-                                        <div>Source Cable SN: ${sourceHtml}</div>
-                                    </div>
-                                </div>
-                                <div class="text-right">
-                                    <div class="legend-container">
-                                        <div class="legend-item">
-                                            <div class="legend-dot-calib"></div>
-                                            <span class="legend-text">Calibration</span>
-                                        </div>
-                                        <div class="legend-item">
-                                            <div class="legend-dot-warn"></div>
-                                            <span class="legend-text">&ge; &plusmn;0.10 cm Warning</span>
-                                        </div>
-                                    </div>
-                                    <p class="text-xs text-slate-500 m-0">Records: ${chartData.length}</p>
-                                </div>
-                            </div>
-
-                            <div class="chart-block">
-                                <h3 class="font-bold text-[16px] text-cyan-900 mb-1">Net Cable Error (Source - Dummy) 90 cm</h3>
-                                <canvas id="c_diff_90" width="1200" height="280"></canvas>
-                            </div>
-                            <div class="chart-block">
-                                <h3 class="font-bold text-[16px] text-cyan-900 mb-1">Net Cable Error (Source - Dummy) 120 cm</h3>
-                                <canvas id="c_diff_120" width="1200" height="280"></canvas>
-                            </div>
-                            <div class="chart-block">
-                                <h3 class="font-bold text-[16px] text-cyan-900 mb-1">Net Cable Error (Source - Dummy) 150 cm</h3>
-                                <canvas id="c_diff_150" width="1200" height="280"></canvas>
-                            </div>
-                            
-                            <div class="report-footer">
-                                <span>Bravos PVT Fast Extractor - Page 1 of 3</span>
-                                <span>Generated on ${generationTime}</span>
-                            </div>
-                        </div>
-                        <!-- PAGE 2: DUMMY CABLES OVERVIEW -->
+                        <!-- PAGE 1: DUMMY CABLES OVERVIEW -->
                         <div class="page-break page-content">
                             <div class="report-header">
                                 <div>
@@ -1602,12 +1649,16 @@
                                 <div class="text-right">
                                     <div class="legend-container">
                                         <div class="legend-item">
+                                            <div class="legend-dot-warn"></div>
+                                            <span class="legend-text">&ge; &plusmn;0.10 cm Warning</span>
+                                        </div>
+                                        <div class="legend-item">
                                             <div class="legend-dot-calib"></div>
                                             <span class="legend-text">Calibration</span>
                                         </div>
                                         <div class="legend-item">
-                                            <div class="legend-dot-warn"></div>
-                                            <span class="legend-text">&ge; &plusmn;0.10 cm Warning</span>
+                                            <div class="legend-dot-exchange"></div>
+                                            <span class="legend-text">Source / Cable Exchange</span>
                                         </div>
                                     </div>
                                     <p class="text-xs text-slate-500 m-0">Records: ${chartData.length}</p>
@@ -1628,13 +1679,13 @@
                             </div>
                             
                             <div class="report-footer">
-                                <span>Bravos PVT Fast Extractor - Page 2 of 3</span>
+                                <span>Bravos PVT Fast Extractor - Page 1 of 3</span>
                                 <span>Generated on ${generationTime}</span>
                             </div>
                         </div>
 
-                        <!-- PAGE 3: SOURCE CABLES OVERVIEW -->
-                        <div class="page-content">
+                        <!-- PAGE 2: SOURCE CABLES OVERVIEW -->
+                        <div class="page-break page-content">
                             <div class="report-header">
                                 <div>
                                     <h1 class="text-2xl font-bold tracking-tight text-slate-900 m-0">Bravos PVT Report - Source Cables</h1>
@@ -1647,12 +1698,16 @@
                                 <div class="text-right">
                                     <div class="legend-container">
                                         <div class="legend-item">
+                                            <div class="legend-dot-warn"></div>
+                                            <span class="legend-text">&ge; &plusmn;0.10 cm Warning</span>
+                                        </div>
+                                        <div class="legend-item">
                                             <div class="legend-dot-calib"></div>
                                             <span class="legend-text">Calibration</span>
                                         </div>
                                         <div class="legend-item">
-                                            <div class="legend-dot-warn"></div>
-                                            <span class="legend-text">&ge; &plusmn;0.10 cm Warning</span>
+                                            <div class="legend-dot-exchange"></div>
+                                            <span class="legend-text">Source / Cable Exchange</span>
                                         </div>
                                     </div>
                                     <p class="text-xs text-slate-500 m-0">Records: ${chartData.length}</p>
@@ -1673,11 +1728,60 @@
                             </div>
                             
                             <div class="report-footer">
-                                <span>Bravos PVT Fast Extractor - Page 3 of 3</span>
+                                <span>Bravos PVT Fast Extractor - Page 2 of 3</span>
                                 <span>Generated on ${generationTime}</span>
                             </div>
                         </div>
 
+                        <!-- PAGE 3: NET CLINICAL DIFFERENCE (SOURCE - DUMMY) -->
+                        <div class="page-content">
+                            <div class="report-header">
+                                <div>
+                                    <h1 class="text-2xl font-bold tracking-tight text-slate-900 m-0">Bravos PVT Report - Net Cable Error (Source - Dummy)</h1>
+                                    <p class="text-slate-800 mt-1 font-bold text-lg m-0">Date Range: ${formattedStartStr} to ${formattedEndStr}</p>
+                                    <div class="mt-1 text-[13px] text-slate-600 space-y-0.5">
+                                        <p>Afterloader SN: <span class="font-bold text-slate-800">${alSn}</span></p>
+                                        <div>Dummy Cable SN: ${dummyHtml}</div>
+                                        <div>Source Cable SN: ${sourceHtml}</div>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="legend-container">
+                                        <div class="legend-item">
+                                            <div class="legend-dot-warn"></div>
+                                            <span class="legend-text">&ge; &plusmn;0.10 cm Warning</span>
+                                        </div>
+                                        <div class="legend-item">
+                                            <div class="legend-dot-calib"></div>
+                                            <span class="legend-text">Calibration</span>
+                                        </div>
+                                        <div class="legend-item">
+                                            <div class="legend-dot-exchange"></div>
+                                            <span class="legend-text">Source / Cable Exchange</span>
+                                        </div>
+                                    </div>
+                                    <p class="text-xs text-slate-500 m-0">Records: ${chartData.length}</p>
+                                </div>
+                            </div>
+
+                            <div class="chart-block">
+                                <h3 class="font-bold text-[16px] text-cyan-900 mb-1">Net Cable Error (Source - Dummy) 90 cm</h3>
+                                <canvas id="c_diff_90" width="1200" height="280"></canvas>
+                            </div>
+                            <div class="chart-block">
+                                <h3 class="font-bold text-[16px] text-cyan-900 mb-1">Net Cable Error (Source - Dummy) 120 cm</h3>
+                                <canvas id="c_diff_120" width="1200" height="280"></canvas>
+                            </div>
+                            <div class="chart-block">
+                                <h3 class="font-bold text-[16px] text-cyan-900 mb-1">Net Cable Error (Source - Dummy) 150 cm</h3>
+                                <canvas id="c_diff_150" width="1200" height="280"></canvas>
+                            </div>
+                            
+                            <div class="report-footer">
+                                <span>Bravos PVT Fast Extractor - Page 3 of 3</span>
+                                <span>Generated on ${generationTime}</span>
+                            </div>
+                        </div>
                     </div>
 
                     <script>
@@ -1693,29 +1797,43 @@
                                 
                                 const isDummy = chart.canvas.id.includes('dummy');
                                 const isDiff = chart.canvas.id.includes('diff');
+                                const isSource = chart.canvas.id.includes('source');
                                 
                                 data.forEach((d, index) => {
-                                    const trigger = isDummy ? d.is_new_dummy : (isDiff ? (d.is_new_source || d.is_new_dummy) : d.is_new_source);
+                                    let trigger = false;
+                                    let indicatorText = '';
+                                    let lineColor = '#ef4444';
+
+                                    if (isDiff) {
+                                        if (d.is_new_source && d.is_new_dummy) { trigger = true; indicatorText = 'NEW SRC & DUM'; }
+                                        else if (d.is_new_source) { trigger = true; indicatorText = 'NEW SOURCE'; }
+                                        else if (d.is_new_dummy) { trigger = true; indicatorText = 'NEW DUMMY'; }
+                                    } else if (isSource) {
+                                        if (d.is_new_source) { trigger = true; indicatorText = 'NEW SOURCE'; }
+                                    } else if (isDummy) {
+                                        if (d.is_new_dummy) {
+                                            trigger = true;
+                                            indicatorText = 'NEW DUMMY';
+                                            lineColor = '#7c3aed';
+                                        } else if (d.is_new_source) {
+                                            trigger = true;
+                                            indicatorText = 'SRC EXCHANGE';
+                                            lineColor = '#94a3b8';
+                                        }
+                                    }
+
                                     if (trigger) {
                                         const x = xAxis.getPixelForValue(index);
-                                        
-                                        let indicatorText = isDummy ? 'NEW DUMMY' : 'NEW SOURCE';
-                                        if (isDiff) {
-                                            if (d.is_new_source && d.is_new_dummy) indicatorText = 'NEW SRC & DUM';
-                                            else if (d.is_new_source) indicatorText = 'NEW SOURCE';
-                                            else indicatorText = 'NEW DUMMY';
-                                        }
-
                                         ctx.save();
                                         ctx.beginPath();
                                         ctx.moveTo(x, yAxis.top);
                                         ctx.lineTo(x, yAxis.bottom);
                                         ctx.lineWidth = 2;
-                                        ctx.strokeStyle = '#ef4444'; 
+                                        ctx.strokeStyle = lineColor; 
                                         ctx.setLineDash(Array.of(5, 5)); 
                                         ctx.stroke();
                                         
-                                        ctx.fillStyle = '#ef4444';
+                                        ctx.fillStyle = lineColor;
                                         ctx.textAlign = 'center';
                                         ctx.textBaseline = 'bottom';
                                         ctx.font = 'bold 11px sans-serif'; 
@@ -1732,22 +1850,42 @@
                             const pointBgColors = [];
                             const pointBorderColors = [];
                             const pointRadii = [];
+                            const pointStyles = [];
+
+                            const isDummy = key.startsWith('dummy');
+                            const isSource = key.startsWith('source');
+                            const isDiff = key.startsWith('diff');
 
                             data.forEach(d => {
                                 const val = Reflect.get(d, key);
                                 const outOfTol = val !== null && !isNaN(val) && Math.abs(val) >= 0.0999;
+                                const hasCalib = d.calibration_performed;
+
+                                let isCableChange = false;
+                                if (isDummy) { isCableChange = d.is_new_dummy || d.is_new_source; }
+                                else if (isSource) { isCableChange = d.is_new_source; }
+                                else if (isDiff) { isCableChange = d.is_new_source || d.is_new_dummy; }
+
                                 if (outOfTol) {
                                     pointBgColors.push('#ef4444');
                                     pointBorderColors.push('#b91c1c');
                                     pointRadii.push(5.5);
-                                } else if (d.calibration_performed) {
+                                    pointStyles.push('circle');
+                                } else if (isCableChange) {
                                     pointBgColors.push('#f59e0b');
                                     pointBorderColors.push('#d97706');
                                     pointRadii.push(4.5);
+                                    pointStyles.push('circle');
+                                } else if (hasCalib) {
+                                    pointBgColors.push('#8b5cf6');
+                                    pointBorderColors.push('#6d28d9');
+                                    pointRadii.push(4.5);
+                                    pointStyles.push('circle');
                                 } else {
                                     pointBgColors.push('#ffffff');
                                     pointBorderColors.push(color);
                                     pointRadii.push(3.5);
+                                    pointStyles.push('circle');
                                 }
                             });
 
@@ -1763,6 +1901,7 @@
                                         tension: 0.1, 
                                         fill: true,
                                         pointRadius: pointRadii,
+                                        pointStyle: pointStyles,
                                         pointBackgroundColor: pointBgColors,
                                         pointBorderColor: pointBorderColors,
                                         pointBorderWidth: 1.5
