@@ -5,6 +5,11 @@
     ========================================================
     UPDATE LOG
     ========================================================
+    - 2026-10-29: (REPORT PAGE ORDER FIX: NET CLINICAL ERROR FIRST)
+                  Enforced report page layout hierarchy:
+                  - Page 1: Net Cable Error (Source - Dummy) - Primary clinical metric.
+                  - Page 2: Dummy Cable Components (90, 120, 150 cm).
+                  - Page 3: Source Cable Components (90, 120, 150 cm).
     - 2026-10-29: (FINAL CONSOLIDATED RELEASE: EVENT VISUALIZATION & REPORT STANDARDIZATION)
                   1) Unified Marker Hierarchy & Color Scheme:
                      - Reverted all markers to clean, standard circular dots for visual consistency.
@@ -1635,7 +1640,57 @@
                 </head>
                 <body>
                     <div class="print-wrapper">
-                        <!-- PAGE 1: DUMMY CABLES OVERVIEW -->
+                        <!-- PAGE 1: NET CLINICAL DIFFERENCE (SOURCE - DUMMY) -->
+                        <div class="page-break page-content">
+                            <div class="report-header">
+                                <div>
+                                    <h1 class="text-2xl font-bold tracking-tight text-slate-900 m-0">Bravos PVT Report - Net Cable Error (Source - Dummy)</h1>
+                                    <p class="text-slate-800 mt-1 font-bold text-lg m-0">Date Range: ${formattedStartStr} to ${formattedEndStr}</p>
+                                    <div class="mt-1 text-[13px] text-slate-600 space-y-0.5">
+                                        <p>Afterloader SN: <span class="font-bold text-slate-800">${alSn}</span></p>
+                                        <div>Dummy Cable SN: ${dummyHtml}</div>
+                                        <div>Source Cable SN: ${sourceHtml}</div>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="legend-container">
+                                        <div class="legend-item">
+                                            <div class="legend-dot-warn"></div>
+                                            <span class="legend-text">&ge; &plusmn;0.10 cm Warning</span>
+                                        </div>
+                                        <div class="legend-item">
+                                            <div class="legend-dot-calib"></div>
+                                            <span class="legend-text">Calibration</span>
+                                        </div>
+                                        <div class="legend-item">
+                                            <div class="legend-dot-exchange"></div>
+                                            <span class="legend-text">Source / Cable Exchange</span>
+                                        </div>
+                                    </div>
+                                    <p class="text-xs text-slate-500 m-0">Records: ${chartData.length}</p>
+                                </div>
+                            </div>
+
+                            <div class="chart-block">
+                                <h3 class="font-bold text-[16px] text-cyan-900 mb-1">Net Cable Error (Source - Dummy) 90 cm</h3>
+                                <canvas id="c_diff_90" width="1200" height="280"></canvas>
+                            </div>
+                            <div class="chart-block">
+                                <h3 class="font-bold text-[16px] text-cyan-900 mb-1">Net Cable Error (Source - Dummy) 120 cm</h3>
+                                <canvas id="c_diff_120" width="1200" height="280"></canvas>
+                            </div>
+                            <div class="chart-block">
+                                <h3 class="font-bold text-[16px] text-cyan-900 mb-1">Net Cable Error (Source - Dummy) 150 cm</h3>
+                                <canvas id="c_diff_150" width="1200" height="280"></canvas>
+                            </div>
+                            
+                            <div class="report-footer">
+                                <span>Bravos PVT Fast Extractor - Page 1 of 3</span>
+                                <span>Generated on ${generationTime}</span>
+                            </div>
+                        </div>
+
+                        <!-- PAGE 2: DUMMY CABLES OVERVIEW -->
                         <div class="page-break page-content">
                             <div class="report-header">
                                 <div>
@@ -1679,13 +1734,13 @@
                             </div>
                             
                             <div class="report-footer">
-                                <span>Bravos PVT Fast Extractor - Page 1 of 3</span>
+                                <span>Bravos PVT Fast Extractor - Page 2 of 3</span>
                                 <span>Generated on ${generationTime}</span>
                             </div>
                         </div>
 
-                        <!-- PAGE 2: SOURCE CABLES OVERVIEW -->
-                        <div class="page-break page-content">
+                        <!-- PAGE 3: SOURCE CABLES OVERVIEW -->
+                        <div class="page-content">
                             <div class="report-header">
                                 <div>
                                     <h1 class="text-2xl font-bold tracking-tight text-slate-900 m-0">Bravos PVT Report - Source Cables</h1>
@@ -1725,56 +1780,6 @@
                             <div class="chart-block">
                                 <h3 class="font-bold text-[16px] text-emerald-900 mb-1">Source Cable 150 cm</h3>
                                 <canvas id="c_source_150" width="1200" height="290"></canvas>
-                            </div>
-                            
-                            <div class="report-footer">
-                                <span>Bravos PVT Fast Extractor - Page 2 of 3</span>
-                                <span>Generated on ${generationTime}</span>
-                            </div>
-                        </div>
-
-                        <!-- PAGE 3: NET CLINICAL DIFFERENCE (SOURCE - DUMMY) -->
-                        <div class="page-content">
-                            <div class="report-header">
-                                <div>
-                                    <h1 class="text-2xl font-bold tracking-tight text-slate-900 m-0">Bravos PVT Report - Net Cable Error (Source - Dummy)</h1>
-                                    <p class="text-slate-800 mt-1 font-bold text-lg m-0">Date Range: ${formattedStartStr} to ${formattedEndStr}</p>
-                                    <div class="mt-1 text-[13px] text-slate-600 space-y-0.5">
-                                        <p>Afterloader SN: <span class="font-bold text-slate-800">${alSn}</span></p>
-                                        <div>Dummy Cable SN: ${dummyHtml}</div>
-                                        <div>Source Cable SN: ${sourceHtml}</div>
-                                    </div>
-                                </div>
-                                <div class="text-right">
-                                    <div class="legend-container">
-                                        <div class="legend-item">
-                                            <div class="legend-dot-warn"></div>
-                                            <span class="legend-text">&ge; &plusmn;0.10 cm Warning</span>
-                                        </div>
-                                        <div class="legend-item">
-                                            <div class="legend-dot-calib"></div>
-                                            <span class="legend-text">Calibration</span>
-                                        </div>
-                                        <div class="legend-item">
-                                            <div class="legend-dot-exchange"></div>
-                                            <span class="legend-text">Source / Cable Exchange</span>
-                                        </div>
-                                    </div>
-                                    <p class="text-xs text-slate-500 m-0">Records: ${chartData.length}</p>
-                                </div>
-                            </div>
-
-                            <div class="chart-block">
-                                <h3 class="font-bold text-[16px] text-cyan-900 mb-1">Net Cable Error (Source - Dummy) 90 cm</h3>
-                                <canvas id="c_diff_90" width="1200" height="280"></canvas>
-                            </div>
-                            <div class="chart-block">
-                                <h3 class="font-bold text-[16px] text-cyan-900 mb-1">Net Cable Error (Source - Dummy) 120 cm</h3>
-                                <canvas id="c_diff_120" width="1200" height="280"></canvas>
-                            </div>
-                            <div class="chart-block">
-                                <h3 class="font-bold text-[16px] text-cyan-900 mb-1">Net Cable Error (Source - Dummy) 150 cm</h3>
-                                <canvas id="c_diff_150" width="1200" height="280"></canvas>
                             </div>
                             
                             <div class="report-footer">
