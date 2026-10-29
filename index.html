@@ -5,6 +5,10 @@
     ========================================================
     UPDATE LOG
     ========================================================
+    - 2026-10-29: (UI REFINEMENT: PERSISTENT MARKER KEY LEGEND)
+                  Decoupled the Marker Key legend bar from the collapsible tab container.
+                  The legend now remains permanently visible in both Single Plot View
+                  and the expanded "View All 9 Plots at Once" grid view.
     - 2026-10-29: (REPORT PAGE ORDER FIX: NET CLINICAL ERROR FIRST)
                   Enforced report page layout hierarchy:
                   - Page 1: Net Cable Error (Source - Dummy) - Primary clinical metric.
@@ -350,25 +354,25 @@
                                     </div>
                                 </div>
 
-                                <!-- Event Visual Legend Bar -->
-                                <div class="flex flex-wrap items-center justify-between text-[11px] bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-slate-600">
-                                    <span class="font-bold text-[10px] uppercase tracking-wider text-slate-400">Marker Key:</span>
-                                    <div class="flex flex-wrap items-center gap-4">
-                                        <div class="flex items-center gap-1.5">
-                                            <span class="w-2.5 h-2.5 rounded-full bg-red-500 border border-red-700"></span>
-                                            <span class="font-medium text-slate-700">&ge; &plusmn;0.10 cm Warning</span>
-                                        </div>
-                                        <div class="flex items-center gap-1.5">
-                                            <span class="w-2.5 h-2.5 rounded-full bg-purple-500 border border-purple-700"></span>
-                                            <span class="font-medium text-slate-700">Calibration Performed</span>
-                                        </div>
-                                        <div class="flex items-center gap-1.5">
-                                            <span class="w-2.5 h-2.5 rounded-full bg-amber-500 border border-amber-600"></span>
-                                            <span class="font-medium text-slate-700">Source / Cable Exchange</span>
-                                        </div>
+                            </div>
+
+                            <!-- Persistent Event Visual Legend Bar (Visible in both Single and 9-Plot views) -->
+                            <div id="markerKeyLegend" class="flex flex-wrap items-center justify-between text-[11px] bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-slate-600">
+                                <span class="font-bold text-[10px] uppercase tracking-wider text-slate-400">Marker Key:</span>
+                                <div class="flex flex-wrap items-center gap-4">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="w-2.5 h-2.5 rounded-full bg-red-500 border border-red-700"></span>
+                                        <span class="font-medium text-slate-700">&ge; &plusmn;0.10 cm Warning</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="w-2.5 h-2.5 rounded-full bg-purple-500 border border-purple-700"></span>
+                                        <span class="font-medium text-slate-700">Calibration Performed</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="w-2.5 h-2.5 rounded-full bg-amber-500 border border-amber-600"></span>
+                                        <span class="font-medium text-slate-700">Source / Cable Exchange</span>
                                     </div>
                                 </div>
-
                             </div>
 
                             <!-- Single Tab View Container -->
