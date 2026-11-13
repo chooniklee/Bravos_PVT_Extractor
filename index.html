@@ -5,6 +5,22 @@
     ========================================================
     UPDATE LOG
     ========================================================
+    - 2026-11-13: (SINGLE PLOT VIEW: MOUSE-WHEEL ZOOM & PAN)
+                  1) Scrolling the mouse wheel over the single trend plot zooms the date axis
+                     in/out, centered on the cursor position (date under the cursor stays fixed).
+                  2) While zoomed: click-drag pans left/right; double-click or "Reset Zoom" restores full range.
+                  3) Zoom window is kept when switching between the 9 tabs (same dates) and reset
+                     automatically when the data set, afterloader, or date range changes.
+                  4) Source/Cable exchange lines outside the zoomed range are no longer drawn.
+                  5) Zoom window is linked to the date range:
+                     - Zooming/panning updates the Start/End Date inputs and filters the data table
+                       (and therefore the 9-plot view and the generated report) to the visible runs.
+                     - Typing/picking Start/End Dates zooms the single plot to that range.
+                     - The data table is now filtered by the date range ("Records: X of N").
+                     - Left-panel "Reset" and double-click both restore the full range.
+                  6) "View All 9 Plots at Once" grid has the same wheel zoom / drag pan.
+                     All 9 plots share one zoom window and move together; switching between
+                     Single Plot View and the grid keeps the current window.
     - 2026-10-29: (UI REFINEMENT: PERSISTENT MARKER KEY LEGEND)
                   Decoupled the Marker Key legend bar from the collapsible tab container.
                   The legend now remains permanently visible in both Single Plot View
@@ -172,7 +188,7 @@
                     Bravos PVT Fast Extractor
                 </h1>
                 <p class="text-slate-500 mt-1 text-sm">Instant extraction, clinical net error plotting, and Excel integration.</p>
-                <p class="text-slate-400 mt-1 text-[11px] italic">Last updated by Choonik Lee (October 29, 2026)</p>
+                <p class="text-slate-400 mt-1 text-[11px] italic">Last updated by Choonik Lee (November 13, 2026)</p>
             </div>
             <!-- Action buttons -->
             <div id="actionButtons" class="hidden flex flex-wrap items-center gap-2">
@@ -376,8 +392,10 @@
                             </div>
 
                             <!-- Single Tab View Container -->
-                            <div id="singleChartContainer" class="h-[270px] w-full">
-                                <canvas id="pvtChart"></canvas>
+                            <div id="singleChartContainer" class="w-full">
+                                <div class="relative h-[270px] w-full">
+                                    <canvas id="pvtChart"></canvas>
+                                </div>
                             </div>
 
                             <!-- Expanded Multi-Chart Grid Container (Initially Hidden) -->
@@ -437,6 +455,12 @@
                                         </div>
                                     </div>
                                 </div>
+                            </div>
+
+                            <!-- Mouse-wheel zoom status / hint bar (shared by Single Plot View and the 9-plot grid) -->
+                            <div class="flex items-center justify-end gap-2 !mt-1 text-[10px] text-slate-400">
+                                <span id="zoomStatus">Scroll over a plot to zoom &middot; Drag to pan &middot; Double-click to reset</span>
+                                <button id="zoomResetBtn" onclick="resetSingleZoom()" class="hidden px-2 py-0.5 border border-slate-300 rounded text-slate-600 font-bold hover:bg-slate-100">Reset Zoom</button>
                             </div>
 
                         </div>
@@ -561,6 +585,8 @@
             });
 
             document.addEventListener('paste', handleGlobalPaste);
+
+            setupChartZoom();
 
             const startDate = getEl('startDate');
             const endDate = getEl('endDate');
@@ -933,7 +959,13 @@
             renderAll();
         }
 
+        function fmtDay(ms) {
+            const d = new Date(ms);
+            return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        }
+
         function updateDateRange() {
+            viewWindow = null; // back to the full range of the active afterloader
             if (allResults.length === 0) return;
             
             const machineData = allResults.filter(r => r.afterloader_sn === activeAfterloader);
@@ -963,6 +995,10 @@
         }
 
         function handleFilterChange() {
+            // Dates typed/picked by the user take over from any wheel-zoom window
+            viewWindow = null;
+            if (allResults.length === 0) return;
+            renderTable(getTableData());
             if (isExpanded) {
                 renderExpandedCharts();
             } else {
@@ -1040,7 +1076,7 @@
             getEl('totalRecordsCount').innerText = machineData.length;
 
             updateReportButtonText();
-            renderTable(machineData);
+            renderTable(getTableData());
             if (isExpanded) {
                 renderExpandedCharts();
             } else {
@@ -1093,7 +1129,10 @@
                     </td>
                 </tr>
             `).join('');
-            getEl('recordCount').innerText = `Records: ${machineData.length}`;
+            const totalForMachine = allResults.filter(r => r.afterloader_sn === activeAfterloader).length;
+            getEl('recordCount').innerText = machineData.length === totalForMachine
+                ? `Records: ${machineData.length}`
+                : `Records: ${machineData.length} of ${totalForMachine}`;
             lucide.createIcons();
         }
 
@@ -1170,19 +1209,42 @@
             lucide.createIcons();
         }
 
-        function getFilteredData() {
-            const machineData = allResults.filter(item => item.afterloader_sn === activeAfterloader);
-            
+        /**
+         * Active date window. When the user zooms/pans the single plot, viewWindow holds the exact
+         * timestamps of the first/last visible runs; otherwise the Start/End Date inputs (whole days) are used.
+         */
+        function getWindowBounds() {
+            if (viewWindow) return viewWindow;
             const startStr = getEl('startDate').value;
             const endStr = getEl('endDate').value;
+            return {
+                start: startStr ? new Date(`${startStr}T00:00:00`).getTime() : 0,
+                end: endStr ? new Date(`${endStr}T23:59:59`).getTime() : Number.MAX_SAFE_INTEGER
+            };
+        }
 
-            const startTime = startStr ? new Date(`${startStr}T00:00:00`).getTime() : 0;
-            const endTime = endStr ? new Date(`${endStr}T23:59:59`).getTime() : Number.MAX_SAFE_INTEGER;
+        function isInWindow(item, bounds) {
+            if (item.sortTime === 0) return true;
+            return item.sortTime >= bounds.start && item.sortTime <= bounds.end;
+        }
 
-            return machineData.filter(item => {
-                if (item.sortTime === 0) return true;
-                return item.sortTime >= startTime && item.sortTime <= endTime;
-            }).sort((a, b) => a.sortTime - b.sortTime);
+        /** All runs of the active afterloader (no date filter), oldest first. */
+        function getMachineDataAsc() {
+            return allResults
+                .filter(item => item.afterloader_sn === activeAfterloader)
+                .sort((a, b) => a.sortTime - b.sortTime);
+        }
+
+        /** Runs of the active afterloader inside the active date window, oldest first. */
+        function getFilteredData() {
+            const bounds = getWindowBounds();
+            return getMachineDataAsc().filter(item => isInWindow(item, bounds));
+        }
+
+        /** Table rows: date-window filtered, in the table's current sort order. */
+        function getTableData() {
+            const rows = getFilteredData();
+            return sortOrder === 'asc' ? rows : rows.reverse();
         }
 
         function createExchangePlugin(chartData, key) {
@@ -1221,6 +1283,9 @@
                                 lineColor = '#94a3b8'; // Subtle Slate/Grey line
                             }
                         }
+
+                        // Skip event lines outside the currently zoomed x-range
+                        if (index < xAxis.min || index > xAxis.max) return;
 
                         if (trigger) {
                             const x = xAxis.getPixelForValue(index);
@@ -1309,7 +1374,11 @@
         }
 
         function renderExpandedCharts() {
-            const chartData = getFilteredData();
+            // Same model as the single plot: all runs on the axis, date window applied as x-axis zoom
+            const chartData = getMachineDataAsc();
+            singleChartData = chartData;
+            const zoomToApply = computeWindowIndices(chartData);
+            singleZoom = zoomToApply;
             const keys = Array.of('diff_90', 'diff_120', 'diff_150', 'dummy_90', 'dummy_120', 'dummy_150', 'source_90', 'source_120', 'source_150');
 
             keys.forEach(key => {
@@ -1367,6 +1436,8 @@
                                 ticks: { font: { size: 9 } }
                             },
                             x: {
+                                min: zoomToApply ? zoomToApply.min : undefined,
+                                max: zoomToApply ? zoomToApply.max : undefined,
                                 ticks: {
                                     font: { size: 9 },
                                     callback: function(val, index) {
@@ -1380,12 +1451,15 @@
                     plugins: Array.of(createExchangePlugin(chartData, key))
                 });
             });
+            updateZoomHint();
         }
 
         function renderChart() {
             if (allResults.length === 0) return;
-            
-            const chartData = getFilteredData();
+
+            // Single plot always holds every run of the machine; the date window becomes the x-axis zoom
+            const chartData = getMachineDataAsc();
+            singleChartData = chartData;
             const ctx = getEl('pvtChart').getContext('2d');
             if (chartInstance) chartInstance.destroy();
             
@@ -1406,6 +1480,10 @@
             };
 
             const pointStyle = getPointStyling(chartData, activeKey, mainColor);
+
+            // Translate the active date window into x-axis index bounds (null = full range)
+            const zoomToApply = computeWindowIndices(chartData);
+            singleZoom = zoomToApply;
 
             chartInstance = new Chart(ctx, {
                 type: 'line',
@@ -1438,6 +1516,9 @@
                             } 
                         },
                         x: {
+                            // Restore wheel-zoom window (category indices) if the dataset is unchanged
+                            min: zoomToApply ? zoomToApply.min : undefined,
+                            max: zoomToApply ? zoomToApply.max : undefined,
                             ticks: {
                                 callback: function(val, index) {
                                     return this.getLabelForValue(val).split(' ').at(0);
@@ -1445,8 +1526,8 @@
                             }
                         }
                     },
-                    plugins: { 
-                        legend: { display: false }, 
+                    plugins: {
+                        legend: { display: false },
                         tooltip: { 
                             mode: 'index', 
                             intersect: false,
@@ -1474,7 +1555,185 @@
                         } 
                     }
                 },
-                plugins: Array.of(createExchangePlugin(chartData, activeKey)) 
+                plugins: Array.of(createExchangePlugin(chartData, activeKey))
+            });
+            updateZoomHint();
+        }
+
+        /* ========================================================
+           Trend plots (Single Plot View + 9-plot grid): mouse-wheel zoom / drag pan
+           - Wheel over a plot zooms the date axis around the cursor position.
+           - When zoomed, click-drag pans left/right; double-click resets.
+           - All visible plots share one zoom window, stored as category indices on the
+             x-axis, and it is mirrored to the Start/End Date inputs and the data table.
+           ======================================================== */
+        const MIN_ZOOM_SPAN = 4; // narrowest view = 5 runs
+        const ZOOM_CANVAS_IDS = ['pvtChart', 'canvas_diff_90', 'canvas_diff_120', 'canvas_diff_150',
+            'canvas_dummy_90', 'canvas_dummy_120', 'canvas_dummy_150',
+            'canvas_source_90', 'canvas_source_120', 'canvas_source_150'];
+        let singleZoom = null;      // { min, max } x-axis index bounds, or null when showing the full range
+        let zoomDrag = null;        // active drag-pan state
+        let viewWindow = null;      // { start, end } exact timestamps set by wheel zoom / pan (see getWindowBounds)
+        let singleChartData = [];   // rows behind the single plot, same order as its x-axis labels
+
+        /** Converts the active date window into x-axis index bounds for the single plot. */
+        function computeWindowIndices(fullData) {
+            const n = fullData.length;
+            if (n < 2) return null;
+            const bounds = getWindowBounds();
+
+            let lo = -1, hi = -1, firstDated = -1;
+            fullData.forEach((item, i) => {
+                if (item.sortTime === 0) return; // runs without a date are always shown
+                if (firstDated < 0) firstDated = i;
+                if (isInWindow(item, bounds)) {
+                    if (lo < 0) lo = i;
+                    hi = i;
+                }
+            });
+            if (lo < 0) return null;          // nothing in range: fall back to the full plot
+            if (lo === firstDated) lo = 0;     // include leading undated runs at the left edge
+            if (hi - lo < 1) {                 // a single run: widen so the axis has a span
+                if (hi < n - 1) hi++; else lo--;
+            }
+            if (lo <= 0 && hi >= n - 1) return null;
+            return { min: lo, max: hi };
+        }
+
+        /** Charts currently on screen (single plot, or the 9-plot grid). */
+        function getVisibleCharts() {
+            if (isExpanded) return Object.values(expandedInstances).filter(Boolean);
+            return chartInstance ? [chartInstance] : [];
+        }
+
+        /**
+         * Sets the visible x-range of all on-screen trend plots and pushes it to the
+         * Start/End Date inputs and the data table.
+         */
+        function applySingleZoom(newMin, span) {
+            const charts = getVisibleCharts();
+            if (charts.length === 0) return;
+            const n = singleChartData.length;
+
+            if (span >= n - 1) {
+                // Fully zoomed out: restore the full date range
+                singleZoom = null;
+                charts.forEach(c => { delete c.options.scales.x.min; delete c.options.scales.x.max; });
+                updateDateRange();
+            } else {
+                newMin = Math.max(0, Math.min(n - 1 - span, Math.round(newMin)));
+                const newMax = newMin + span;
+                charts.forEach(c => { c.options.scales.x.min = newMin; c.options.scales.x.max = newMax; });
+                singleZoom = { min: newMin, max: newMax };
+
+                const startTime = singleChartData.at(newMin).sortTime;
+                const endTime = singleChartData.at(newMax).sortTime;
+                viewWindow = { start: startTime, end: endTime };
+                if (startTime > 0) getEl('startDate').value = fmtDay(startTime);
+                if (endTime > 0) getEl('endDate').value = fmtDay(endTime);
+            }
+            charts.forEach(c => c.update('none'));
+            renderTable(getTableData());
+            updateZoomHint();
+        }
+
+        function resetSingleZoom() {
+            if (getVisibleCharts().length === 0) { singleZoom = null; updateZoomHint(); return; }
+            applySingleZoom(0, singleChartData.length);
+        }
+
+        function updateZoomHint() {
+            const status = getEl('zoomStatus');
+            const btn = getEl('zoomResetBtn');
+            if (!status || !btn) return;
+            const cursor = zoomDrag ? 'grabbing' : (singleZoom ? 'grab' : '');
+            ZOOM_CANVAS_IDS.forEach(id => { const c = getEl(id); if (c) c.style.cursor = cursor; });
+
+            if (singleZoom && singleChartData.length > 0) {
+                const labels = singleChartData.map(d => d.date);
+                const from = String(labels.at(singleZoom.min)).split(' ').at(0);
+                const to = String(labels.at(singleZoom.max)).split(' ').at(0);
+                status.textContent = `Zoomed: ${singleZoom.max - singleZoom.min + 1} of ${labels.length} runs (${from} → ${to}) · Drag to pan · Double-click to reset`;
+                btn.classList.remove('hidden');
+            } else {
+                status.textContent = 'Scroll over a plot to zoom · Drag to pan · Double-click to reset';
+                btn.classList.add('hidden');
+            }
+        }
+
+        /** Wires wheel-zoom / drag-pan start / double-click-reset onto one plot canvas. */
+        function attachZoomHandlers(canvas) {
+            const getChart = () => Chart.getChart(canvas);
+
+            const isInPlotArea = (chart, e) => {
+                const rect = canvas.getBoundingClientRect();
+                const px = e.clientX - rect.left;
+                const py = e.clientY - rect.top;
+                const a = chart.chartArea;
+                return px >= a.left && px <= a.right && py >= a.top && py <= a.bottom;
+            };
+
+            canvas.addEventListener('wheel', (e) => {
+                const chart = getChart();
+                if (!chart || e.deltaY === 0) return;
+                const n = chart.data.labels.length;
+                if (n - 1 <= MIN_ZOOM_SPAN || !isInPlotArea(chart, e)) return;
+                e.preventDefault(); // stop page scrolling while zooming the plot
+
+                const xScale = chart.scales.x;
+                const area = chart.chartArea;
+                const span = xScale.max - xScale.min;
+                if (e.deltaY < 0 && span <= MIN_ZOOM_SPAN) return; // already at max zoom
+                const px = e.clientX - canvas.getBoundingClientRect().left;
+                const frac = (px - area.left) / (area.right - area.left);
+                const anchor = xScale.min + frac * span; // date index under the cursor
+
+                let newSpan = e.deltaY < 0
+                    ? Math.min(span - 1, Math.round(span * 0.8))   // wheel up: zoom in
+                    : Math.max(span + 1, Math.round(span * 1.25)); // wheel down: zoom out
+                newSpan = Math.max(MIN_ZOOM_SPAN, Math.min(n - 1, newSpan));
+                if (newSpan === span) return;
+
+                // Keep the date under the cursor at the same screen position
+                applySingleZoom(anchor - frac * newSpan, newSpan);
+            }, { passive: false });
+
+            canvas.addEventListener('mousedown', (e) => {
+                const chart = getChart();
+                if (e.button !== 0 || !chart || !singleZoom || !isInPlotArea(chart, e)) return;
+                const span = singleZoom.max - singleZoom.min;
+                zoomDrag = {
+                    startX: e.clientX,
+                    startMin: singleZoom.min,
+                    span: span,
+                    pxPerIndex: (chart.chartArea.right - chart.chartArea.left) / span
+                };
+                updateZoomHint();
+                e.preventDefault();
+            });
+
+            canvas.addEventListener('dblclick', () => {
+                if (singleZoom) resetSingleZoom();
+            });
+        }
+
+        function setupChartZoom() {
+            ZOOM_CANVAS_IDS.forEach(id => {
+                const canvas = getEl(id);
+                if (canvas) attachZoomHandlers(canvas);
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!zoomDrag || !singleZoom) return;
+                const shift = Math.round((zoomDrag.startX - e.clientX) / zoomDrag.pxPerIndex);
+                const newMin = zoomDrag.startMin + shift;
+                if (newMin !== singleZoom.min) applySingleZoom(newMin, zoomDrag.span);
+            });
+
+            window.addEventListener('mouseup', () => {
+                if (!zoomDrag) return;
+                zoomDrag = null;
+                updateZoomHint();
             });
         }
 
@@ -1542,8 +1801,12 @@
             getEl('dataViewContainer').classList.remove('flex');
             getEl('actionButtons').classList.add('hidden');
             
-            getEl('startDate').value = ''; 
-            getEl('endDate').value = ''; 
+            getEl('startDate').value = '';
+            getEl('endDate').value = '';
+            viewWindow = null;
+            singleZoom = null;
+            singleChartData = [];
+            updateZoomHint();
             getEl('totalRecordsCount').innerText = '0';
             
             getEl('emptyState').classList.remove('hidden');
