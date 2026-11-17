@@ -4,7 +4,21 @@
     <!-- 
     ========================================================
     UPDATE LOG
+    (Detailed developer log. The user-facing summary lives in UPDATE_HISTORY in the script
+     and opens from the "Last updated by" link in the header.)
     ========================================================
+    - 2026-11-17: (HOVER DEFAULT ON, DISCLAIMER OPT-OUT, UPDATE HISTORY PAGE)
+                  1) Hover Values tooltip is now ON by default.
+                  2) Disclaimer has a "Don't show this again on this computer" checkbox
+                     (saved in browser localStorage; falls back to always showing if storage is blocked).
+                  3) "Last updated by Choonik Lee" is a link that opens a summarized update history in a new tab.
+                     The tab loads this same page with #update-history and renders only the history
+                     (avoids the "Not secure" blob:null URL Chrome shows for blob pages opened from a local file).
+    - 2026-11-17: (HOVER TOOLTIP: PROXIMITY + ON/OFF TOGGLE)
+                  1) Date/value hover tooltip now appears only when the cursor is on or within
+                     ~4 px of a data point (was: anywhere along the x-axis).
+                  2) Added a "Hover Values" On/Off switch at the right end of the Marker Key bar.
+                     Off by default; applies to the single plot and all 9 plots.
     - 2026-11-13: (SINGLE PLOT VIEW: MOUSE-WHEEL ZOOM & PAN)
                   1) Scrolling the mouse wheel over the single trend plot zooms the date axis
                      in/out, centered on the cursor position (date under the cursor stays fixed).
@@ -171,13 +185,26 @@
                 <p>This tool is not a substitute for official record-keeping or professional clinical judgment. The end user is solely responsible for independently verifying the accuracy of all extracted data and generated plots against the original source documents.</p>
                 <p>The developers assume no responsibility or liability for any errors, omissions, or clinical decisions made based on the use of this tool.</p>
             </div>
-            <div class="flex justify-end">
+            <div class="flex items-center justify-between gap-4">
+                <label class="flex items-center gap-2 text-xs text-slate-500 cursor-pointer select-none">
+                    <input type="checkbox" id="disclaimerDontShow" class="w-4 h-4 accent-indigo-600 cursor-pointer">
+                    Don't show this again on this computer
+                </label>
                 <button onclick="dismissDisclaimer()" class="px-6 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all shadow-md font-bold text-sm flex items-center gap-2">
                     <i data-lucide="check" class="w-4 h-4"></i> I Acknowledge
                 </button>
             </div>
         </div>
     </div>
+    <script>
+        // Hide the disclaimer right away (no flash) if the user chose "Don't show this again",
+        // or if this tab is only showing the update history
+        try {
+            if (location.hash === '#update-history' || localStorage.getItem('pvtDisclaimerDismissed') === '1') {
+                document.getElementById('disclaimerModal').classList.add('hidden');
+            }
+        } catch (e) { /* storage blocked: always show the disclaimer */ }
+    </script>
 
     <div class="max-w-7xl mx-auto">
         <!-- Header Section -->
@@ -188,7 +215,7 @@
                     Bravos PVT Fast Extractor
                 </h1>
                 <p class="text-slate-500 mt-1 text-sm">Instant extraction, clinical net error plotting, and Excel integration.</p>
-                <p class="text-slate-400 mt-1 text-[11px] italic">Last updated by Choonik Lee (November 13, 2026)</p>
+                <p class="text-slate-400 mt-1 text-[11px] italic"><a href="#" onclick="openUpdateLog(event)" title="Open the update history in a new tab" class="underline decoration-dotted underline-offset-2 hover:text-indigo-600">Last updated by Choonik Lee (November 17, 2026)</a></p>
             </div>
             <!-- Action buttons -->
             <div id="actionButtons" class="hidden flex flex-wrap items-center gap-2">
@@ -388,6 +415,15 @@
                                         <span class="w-2.5 h-2.5 rounded-full bg-amber-500 border border-amber-600"></span>
                                         <span class="font-medium text-slate-700">Source / Cable Exchange</span>
                                     </div>
+                                    <!-- Hover tooltip on/off toggle (default: off) -->
+                                    <button id="hoverToggleBtn" onclick="toggleHoverTooltips()" role="switch" aria-checked="true"
+                                            title="Show date and value when the mouse is over a data point"
+                                            class="flex items-center gap-1.5 pl-3 border-l border-slate-300 font-medium text-slate-700 hover:text-indigo-700">
+                                        <span id="hoverToggleTrack" class="relative inline-block w-7 h-4 rounded-full bg-indigo-600 transition-colors">
+                                            <span id="hoverToggleKnob" class="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform translate-x-3"></span>
+                                        </span>
+                                        <span>Hover Values: <span id="hoverToggleText" class="font-bold">On</span></span>
+                                    </button>
                                 </div>
                             </div>
 
@@ -560,6 +596,12 @@
         }
 
         function initApp() {
+            // Opened from the "Last updated by" link: show only the update history
+            if (location.hash === UPDATE_LOG_HASH) {
+                renderUpdateLogView();
+                return;
+            }
+
             lucide.createIcons();
             
             const fileInput = getEl('fileInput');
@@ -602,7 +644,97 @@
 
         document.addEventListener('DOMContentLoaded', initApp);
 
+        /**
+         * User-facing update history (major changes only), opened from the "Last updated by" link.
+         * The detailed developer log stays in the HTML comment at the top of this file.
+         * Newest first. Add new entries at the top.
+         */
+        const UPDATE_HISTORY = [
+            { date: '2026-11-17', items: [
+                'Hover date/value tooltip now appears only near a data point, with an On/Off switch in the Marker Key bar.',
+                'Disclaimer has a "Don\'t show this again" option.',
+                'Added this update history page (click "Last updated by" in the header).'
+            ]},
+            { date: '2026-11-13', items: [
+                'Mouse-wheel zoom and drag-to-pan on the trend plots (single view and all 9 plots).',
+                'Zoomed range is linked to the Start/End Date and the data table.'
+            ]},
+            { date: '2026-10-29', items: [
+                'Unified plot markers: red = out of tolerance, orange = source/cable exchange, purple = calibration.',
+                'PDF report reordered: Net Cable Error first, then Dummy cables, then Source cables.'
+            ]},
+            { date: '2026-10-28', items: [
+                'Clinical tolerance highlighting (|error| ≥ 0.10 cm) in the table and plots.',
+                'Trend Analysis reorganized around Net Error, Dummy, and Source, with "View All 9 Plots at Once".'
+            ]},
+            { date: '2026-10-22', items: [
+                'Net cable error (Source − Dummy) calculated and plotted at 90, 120, and 150 cm.'
+            ]},
+            { date: '2026-04-09', items: [
+                'Excel paste works across locales: European dates (DD.MM.YYYY), AM/PM, and localized time formats.'
+            ]},
+            { date: '2026-04-07', items: [
+                'Dummy cable SN tracking and SN history in the PDF report.',
+                'Clipboard export adapts to the computer\'s decimal format (comma vs. point).'
+            ]},
+            { date: '2026-03-27', items: [
+                'Added Disclaimer & Terms of Use.'
+            ]},
+            { date: '2026-03-10', items: [
+                'PDF report generation.',
+                'Source cable SN extraction with automatic source exchange detection shown on the plots.'
+            ]},
+            { date: '2026-03-04', items: [
+                'Same-day runs ordered by the time in the PDF file name.',
+                'Improved Excel paste (macOS clipboard, 2-digit years, dates with time).'
+            ]},
+            { date: '2026-02-10', items: [
+                'First release: extract Dummy and Source cable deviations at 90/120/150 cm from BRAVOS PVT PDFs, trend plots, and Excel copy/paste.'
+            ]}
+        ];
+
+        const UPDATE_LOG_HASH = '#update-history';
+
+        /** Opens the update history in a new tab: the same page, shown in history-only mode. */
+        function openUpdateLog(ev) {
+            if (ev) ev.preventDefault();
+            window.open(location.href.split('#')[0] + UPDATE_LOG_HASH, '_blank');
+        }
+
+        /** Replaces the app UI with the update history when the page is opened with #update-history. */
+        function renderUpdateLogView() {
+            const fmtDate = (s) => new Date(`${s}T12:00:00`).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+            const sections = UPDATE_HISTORY.map(entry => `
+                <section>
+                    <h2>${fmtDate(entry.date)}</h2>
+                    <ul>${entry.items.map(t => `<li>${t}</li>`).join('')}</ul>
+                </section>`).join('');
+
+            document.title = 'Bravos PVT Fast Extractor - Update History';
+            document.body.className = 'update-log-view';
+            document.body.innerHTML = `
+                <style>
+                    .update-log-view { font-family: 'Inter', 'Segoe UI', Arial, sans-serif; background: #f8fafc; color: #334155; margin: 0; padding: 32px 16px; }
+                    .update-log-view main { max-width: 760px; margin: 0 auto; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 28px 32px; }
+                    .update-log-view h1 { color: #312e81; font-size: 24px; font-weight: 700; margin: 0 0 4px; }
+                    .update-log-view .sub { color: #94a3b8; font-size: 13px; margin: 0 0 24px; }
+                    .update-log-view section { border-top: 1px solid #f1f5f9; padding: 14px 0 6px; }
+                    .update-log-view h2 { font-size: 14px; font-weight: 700; color: #4f46e5; margin: 0 0 6px; }
+                    .update-log-view ul { list-style: disc; margin: 0; padding-left: 20px; }
+                    .update-log-view li { font-size: 14px; line-height: 1.55; margin-bottom: 4px; }
+                </style>
+                <main>
+                    <h1>Bravos PVT Fast Extractor</h1>
+                    <p class="sub">Update history &middot; maintained by Choonik Lee</p>
+                    ${sections}
+                </main>`;
+        }
+
         function dismissDisclaimer() {
+            const dontShow = getEl('disclaimerDontShow');
+            if (dontShow && dontShow.checked) {
+                try { localStorage.setItem('pvtDisclaimerDismissed', '1'); } catch (e) { /* storage blocked */ }
+            }
             const modal = getEl('disclaimerModal');
             if (modal) {
                 modal.classList.add('opacity-0', 'pointer-events-none');
@@ -1420,7 +1552,9 @@
                             pointStyle: pointStyle.pointStyles,
                             pointBackgroundColor: pointStyle.bgColors,
                             pointBorderColor: pointStyle.borderColors,
-                            pointBorderWidth: 1.5
+                            pointBorderWidth: 1.5,
+                            pointHitRadius: 4,                 // hover detection ~4 px beyond the circle
+                            pointHoverRadius: pointStyle.radii // keep marker size on hover
                         })
                     },
                     options: {
@@ -1446,7 +1580,9 @@
                                 }
                             }
                         },
-                        plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } }
+                        // Tooltip only when the cursor is on/near a data point, and only if the user turned it on
+                        interaction: { mode: 'nearest', intersect: true },
+                        plugins: { legend: { display: false }, tooltip: { enabled: hoverTooltips, mode: 'nearest', intersect: true } }
                     },
                     plugins: Array.of(createExchangePlugin(chartData, key))
                 });
@@ -1498,7 +1634,9 @@
                         pointStyle: pointStyle.pointStyles,
                         pointBackgroundColor: pointStyle.bgColors,
                         pointBorderColor: pointStyle.borderColors,
-                        pointBorderWidth: 1.5
+                        pointBorderWidth: 1.5,
+                        pointHitRadius: 4,                 // hover detection ~4 px beyond the circle
+                        pointHoverRadius: pointStyle.radii // keep marker size on hover
                     })
                 },
                 options: {
@@ -1506,6 +1644,8 @@
                     layout: {
                         padding: { top: 22, right: 35 }
                     },
+                    // Tooltip only when the cursor is on/near a data point, and only if the user turned it on
+                    interaction: { mode: 'nearest', intersect: true },
                     scales: {
                         y: { 
                             min: -yLimit, max: yLimit, 
@@ -1528,9 +1668,10 @@
                     },
                     plugins: {
                         legend: { display: false },
-                        tooltip: { 
-                            mode: 'index', 
-                            intersect: false,
+                        tooltip: {
+                            enabled: hoverTooltips,
+                            mode: 'nearest',
+                            intersect: true,
                             callbacks: {
                                 title: function(context) {
                                     return context.at(0).label;
@@ -1574,7 +1715,26 @@
         let singleZoom = null;      // { min, max } x-axis index bounds, or null when showing the full range
         let zoomDrag = null;        // active drag-pan state
         let viewWindow = null;      // { start, end } exact timestamps set by wheel zoom / pan (see getWindowBounds)
-        let singleChartData = [];   // rows behind the single plot, same order as its x-axis labels
+        let singleChartData = [];   // rows behind the trend plots, same order as their x-axis labels
+        let hoverTooltips = true;   // hover date/value tooltip, on by default (Marker Key toggle)
+
+        /** Marker Key toggle: turns the hover date/value tooltip on/off on every trend plot. */
+        function toggleHoverTooltips() {
+            hoverTooltips = !hoverTooltips;
+            const btn = getEl('hoverToggleBtn');
+            if (btn) btn.setAttribute('aria-checked', String(hoverTooltips));
+            getEl('hoverToggleText').textContent = hoverTooltips ? 'On' : 'Off';
+            getEl('hoverToggleTrack').classList.toggle('bg-indigo-600', hoverTooltips);
+            getEl('hoverToggleTrack').classList.toggle('bg-slate-300', !hoverTooltips);
+            getEl('hoverToggleKnob').classList.toggle('translate-x-3', hoverTooltips);
+
+            [chartInstance, ...Object.values(expandedInstances)].forEach(c => {
+                if (!c || !c.canvas) return;
+                c.options.plugins.tooltip.enabled = hoverTooltips;
+                if (!hoverTooltips && c.tooltip) c.tooltip.setActiveElements([], { x: 0, y: 0 });
+                c.update('none');
+            });
+        }
 
         /** Converts the active date window into x-axis index bounds for the single plot. */
         function computeWindowIndices(fullData) {
